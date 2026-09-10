@@ -28,7 +28,14 @@ public:
 
     CPU(RAM& ram);
 
+    // ALU Operations
     void ADD(uint8_t r);
+    void ADC(uint8_t r);
+    void SUB(uint8_t r);
+    void SBC(uint8_t r);
+
+    uint8_t read_reg(uint8_t r);
+    void write_reg(uint8_t r, uint8_t val);
 
     void init();
     void step();
