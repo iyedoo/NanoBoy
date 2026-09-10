@@ -43,6 +43,8 @@ public:
     uint16_t INC16(uint16_t r);
     uint16_t DEC16(uint16_t r);
 
+    void ADD16(uint16_t rr);
+
     // Make life easier
     uint8_t read_reg(uint8_t r);
     void write_reg(uint8_t r, uint8_t val);

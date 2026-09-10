@@ -254,6 +254,26 @@ uint16_t CPU::DEC16(uint16_t r) {
     return diff;
 }
 
+void CPU::ADD16(uint16_t rr) {
+    bool c[17];
+
+    uint16_t sum = 0;
+
+    c[0] = 0;
+    for (int i = 0; i < 16; ++i) {
+        bool HL = (reg.HL() >> i) & 1;
+        bool R = (rr >> i) & 1;
+        
+        bool S = HL ^ R ^ c[i];
+        c[i + 1] = (HL & R) | (c[i] & (HL ^ R));
+
+        sum |= (S << i);
+    }
+
+    reg.sHL(sum);
+    reg.flags(reg.F & 0x80, 0, c[12], c[16]);   
+}
+
 uint8_t CPU::read_reg(uint8_t r) {
     switch (r) {
         case 0: return reg.B;
@@ -293,6 +313,17 @@ void CPU::execute() {
     }
 
     switch (opcode) {
+
+        case 0x00: // NOP
+            break;
+        
+        case 0x10: // STOP 0
+            break;
+        
+        case 0x76: // HALT
+            break;
+        
+        
 
         // ============== LOAD INSTRUCIONS ==============
 
@@ -399,6 +430,47 @@ void CPU::execute() {
             reg.A = ram.read(ram.read(reg.PC) | (ram.read(reg.PC + 1) << 8));
             reg.PC += 2;
             break;
+        
+        case 0x01: // LD BC, d16
+            reg.sBC(ram.read(reg.PC) | (ram.read(reg.PC + 1) << 8));
+            reg.PC += 2;
+            break;
+        
+        case 0x11: // LD DE, d16
+            reg.sDE(ram.read(reg.PC) | (ram.read(reg.PC + 1) << 8));
+            reg.PC += 2;
+            break;
+        
+        case 0x21: // LD HL, d16
+            reg.sHL(ram.read(reg.PC) | (ram.read(reg.PC + 1) << 8));
+            reg.PC += 2;
+            break;
+        
+        case 0x31: // LD SP, d16
+            reg.SP = ram.read(reg.PC) | (ram.read(reg.PC + 1) << 8);
+            reg.PC += 2;
+            break;
+        
+        case 0x08: // LD (a16), SP
+            ram.write(ram.read(reg.PC) | (ram.read(reg.PC + 1) << 8), reg.SP);
+            reg.PC += 2;
+            break;
+        
+        case 0xF8: // LD HL, SP+r8
+            uint8_t r8 = ram.read(reg.PC);
+            reg.PC += 1;
+
+            bool H = (reg.SP & 0xF) + (r8 & 0xF) > 0xF;
+            bool C = (reg.SP & 0xFF) + (r8 & 0xFF) > 0xF;
+
+            reg.F = (H << 5) | (C << 4);
+
+            reg.sHL(reg.SP + r8);
+            break;
+
+        case 0xF9: // LD SP, HL
+            reg.SP = reg.HL();
+            break;
 
         // ============== ADD INSTRUCTIONS ==============
 
@@ -439,6 +511,35 @@ void CPU::execute() {
             reg.PC += 1;
             break;
         
+        case 0xE8: // ADD SP, r8
+            uint8_t r8 = ram.read(reg.PC);
+            reg.PC += 1;
+
+            bool H = (reg.SP & 0xF) + (r8 & 0xF) > 0xF;
+            bool C = (reg.SP & 0xFF) + (r8 & 0xFF) > 0xF;
+
+            reg.F = (H << 5) | (C << 4);
+
+            reg.SP = reg.SP + r8;
+            break;
+        
+        // ADD HL, rr
+        // why am i doing this to myself
+        // i could be talking to a girl rn instead of ts
+
+        case 0x09:
+            ADD16(reg.BC());
+            break;
+        case 0x19:
+            ADD16(reg.DE());
+            break;
+        case 0x29:
+            ADD16(reg.HL());
+            break;
+        case 0x39:
+            ADD16(reg.SP);
+            break;
+
         // ============== ADC INSTRUCTIONS ==============
 
         case 0x88: // ADC A, B
