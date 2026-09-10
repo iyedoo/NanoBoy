@@ -18,9 +18,9 @@ int main() {
 
     ram.write(0x0004, 0x80); // ADD A, B
 
-    cpu.step();
-    cpu.step();
-    cpu.step();
+    cpu.execute();
+    cpu.execute();
+    cpu.execute();
 
     std::cout << "A = 0x" << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(cpu.reg.A) << '\n';
     std::cout << "F = 0x" << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(cpu.reg.F) << '\n';

@@ -37,11 +37,16 @@ public:
     void OR(uint8_t r);
     void XOR(uint8_t r);
     void CP(uint8_t r);
+    
+    uint8_t INC8(uint8_t r);
+    uint8_t DEC8(uint8_t r);
+    uint16_t INC16(uint16_t r);
+    uint16_t DEC16(uint16_t r);
 
     // Make life easier
     uint8_t read_reg(uint8_t r);
     void write_reg(uint8_t r, uint8_t val);
 
     void init();
-    void step();
+    void execute();
 };

@@ -26,43 +26,43 @@ void CPU::init() {
 }
 
 void CPU::ADD(uint8_t r) {
-    bool C[9];
+    bool c[9];
 
     uint8_t sum = 0;
 
-    C[0] = 0;
+    c[0] = 0;
     for (int i = 0; i < 8; ++i) {
         bool A = (reg.A >> i) & 1;
         bool R = (r >> i) & 1;
         
-        bool S = A ^ R ^ C[i];
-        C[i + 1] = (A & R) | (C[i] & (A ^ R));
+        bool S = A ^ R ^ c[i];
+        c[i + 1] = (A & R) | (c[i] & (A ^ R));
 
         sum |= (S << i);
     }
 
     reg.A = sum;
-    reg.flags(sum == 0, 0, C[4], C[8]);
+    reg.flags(sum == 0, 0, c[4], c[8]);
 }
 
 void CPU::ADC(uint8_t r) {
-    bool C[9];
+    bool c[9];
 
     uint8_t sum = 0;
 
-    C[0] = (reg.F & 0b00010000);
+    c[0] = (reg.F & 0b00010000);
     for (int i = 0; i < 8; ++i) {
         bool A = (reg.A >> i) & 1;
         bool R = (r >> i) & 1;
         
-        bool S = A ^ R ^ C[i];
-        C[i + 1] = (A & R) | (C[i] & (A ^ R));
+        bool S = A ^ R ^ c[i];
+        c[i + 1] = (A & R) | (c[i] & (A ^ R));
 
         sum |= (S << i);
     }
 
     reg.A = sum;
-    reg.flags(sum == 0, 0, C[4], C[8]);
+    reg.flags(sum == 0, 0, c[4], c[8]);
 }
 
 void CPU::SUB(uint8_t r) {
@@ -160,6 +160,100 @@ void CPU::CP(uint8_t r) {
     reg.flags(diff == 0, 1, B[4], B[8]);
 }
 
+uint8_t CPU::INC8(uint8_t r) {
+    bool c[9];
+
+    uint8_t sum = 0;
+
+    c[0] = 0;
+    for (int i = 0; i < 8; ++i) {
+        bool R = (r >> i) & 1;
+        bool V = (0b00000001 >> i) & 1;
+
+        bool S = R ^ V ^ c[i];
+        c[i + 1] = (R & V) | (c[i] & (R ^ V));
+
+        sum |= (S << i);
+    }
+
+    bool C = reg.F & 0b00010000;
+    reg.flags(sum == 0, 0, c[4], C);
+
+    return sum;
+}
+
+uint8_t CPU::DEC8(uint8_t r) {
+    bool B[9];
+
+    uint8_t diff = 0;
+
+    B[0] = 0;
+    for (int i = 0; i < 8; ++i) {
+        bool R = (r >> i) & 1;
+        bool V = (0b00000001 >> i) & 1;
+
+        bool D = R ^ V ^ B[i];
+        B[i + 1] = (!R & V) | (B[i] & !(R ^ V));
+
+        diff |= (D << i);
+    }
+
+    bool C = reg.F & 0b00010000;
+    reg.flags(diff == 0, 1, B[4], C);
+
+    return diff;
+}
+
+uint16_t CPU::INC16(uint16_t r) {
+    bool c[17];
+
+    uint16_t sum = 0;
+
+    c[0] = 0;
+    for (int i = 0; i < 16; ++i) {
+        bool R = (r >> i) & 1;
+        bool V = (0b0000000000000001 >> i) & 1;
+
+        bool S = R ^ V ^ c[i];
+        c[i + 1] = (R & V) | (c[i] & (R ^ V));
+
+        sum |= (S << i);
+    }
+
+    bool Z = reg.F & 0b10000000;
+    bool H = reg.F & 0b00100000;
+    bool C = reg.F & 0b00010000;
+
+    reg.flags(Z, 0, H, C);
+
+    return sum;
+}
+
+uint16_t CPU::DEC16(uint16_t r) {
+    bool B[17];
+
+    uint16_t diff = 0;
+
+    B[0] = 0;
+    for (int i = 0; i < 16; ++i) {
+        bool R = (r >> i) & 1;
+        bool V = (0b0000000000000001 >> i) & 1;
+
+        bool D = R ^ V ^ B[i];
+        B[i + 1] = (!R & V) | (B[i] & !(R ^ V));
+
+        diff |= (D << i);
+    }
+
+    bool Z = reg.F & 0b10000000;
+    bool H = reg.F & 0b00100000;
+    bool C = reg.F & 0b00010000;
+
+    reg.flags(Z, 1, H, C);
+
+    return diff;
+}
+
 uint8_t CPU::read_reg(uint8_t r) {
     switch (r) {
         case 0: return reg.B;
@@ -187,7 +281,7 @@ void CPU::write_reg(uint8_t r, uint8_t val) {
     }
 }
 
-void CPU::step() {
+void CPU::execute() {
     uint8_t opcode = ram.read(reg.PC);
     reg.PC += 1;
 
@@ -298,6 +392,11 @@ void CPU::step() {
         
         case 0xEA: // LD (a16), A
             ram.write(ram.read(reg.PC) | (ram.read(reg.PC + 1) << 8), reg.A);
+            reg.PC += 2;
+            break;
+        
+        case 0xFA: // LD A, (a16)
+            reg.A = ram.read(ram.read(reg.PC) | (ram.read(reg.PC + 1) << 8));
             reg.PC += 2;
             break;
 
@@ -601,6 +700,107 @@ void CPU::step() {
         case 0xFE: // CP d8
             CP(ram.read(reg.PC));
             reg.PC += 1;
+            break;
+
+        // ============== INC INSTRUCTIONS ==============
+
+        case 0x04: // INC B
+            reg.B = INC8(reg.B);
+            break;
+
+        case 0x0C: // INC C
+            reg.C = INC8(reg.C);
+            break;
+
+        case 0x14: // INC D
+            reg.D = INC8(reg.D);
+            break;
+
+        case 0x1C: // INC E
+            reg.E = INC8(reg.E);
+            break;
+
+        case 0x24: // INC H
+            reg.H = INC8(reg.H);
+            break;
+
+        case 0x2C: // INC L
+            reg.L = INC8(reg.L);
+            break;
+
+        case 0x34: // INC (HL)
+            ram.write(reg.HL(), INC8(ram.read(reg.HL())));
+            break;
+
+        case 0x3C: // INC A
+            reg.A = INC8(reg.A);
+            break;
+
+        case 0x03: // INC BC
+            reg.sBC(INC16(reg.BC()));
+            break;
+
+        case 0x13: // INC DE
+            reg.sDE(INC16(reg.DE()));
+            break;
+
+        case 0x23: // INC HL
+            reg.sHL(INC16(reg.HL()));
+            break;
+
+        case 0x33: // INC SP
+            reg.SP = INC16(reg.SP);
+            break;
+
+
+        // ============== DEC INSTRUCTIONS ==============
+
+        case 0x05: // DEC B
+            reg.B = DEC8(reg.B);
+            break;
+
+        case 0x0D: // DEC C
+            reg.C = DEC8(reg.C);
+            break;
+
+        case 0x15: // DEC D
+            reg.D = DEC8(reg.D);
+            break;
+
+        case 0x1D: // DEC E
+            reg.E = DEC8(reg.E);
+            break;
+
+        case 0x25: // DEC H
+            reg.H = DEC8(reg.H);
+            break;
+
+        case 0x2D: // DEC L
+            reg.L = DEC8(reg.L);
+            break;
+
+        case 0x35: // DEC (HL)
+            ram.write(reg.HL(), DEC8(ram.read(reg.HL())));
+            break;
+
+        case 0x3D: // DEC A
+            reg.A = DEC8(reg.A);
+            break;
+
+        case 0x0B: // DEC BC
+            reg.sBC(DEC16(reg.BC()));
+            break;
+
+        case 0x1B: // DEC DE
+            reg.sDE(DEC16(reg.DE()));
+            break;
+
+        case 0x2B: // DEC HL
+            reg.sHL(DEC16(reg.HL()));
+            break;
+
+        case 0x3B: // DEC SP
+            reg.SP = DEC16(reg.SP);
             break;
     }
 }
