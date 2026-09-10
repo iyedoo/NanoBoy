@@ -45,6 +45,11 @@ public:
 
     void ADD16(uint16_t rr);
 
+    void RLCA();
+    void RRCA();
+    void RLA();
+    void RRA();
+
     // Make life easier
     uint8_t read_reg(uint8_t r);
     void write_reg(uint8_t r, uint8_t val);
