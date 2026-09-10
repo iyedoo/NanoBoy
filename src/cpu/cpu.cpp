@@ -140,6 +140,26 @@ void CPU::XOR(uint8_t r) {
     reg.A = out;
     reg.flags(out == 0, 0, 0, 0);
 }
+
+void CPU::CP(uint8_t r) {
+    bool B[9];
+
+    uint8_t diff = 0;
+
+    B[0] = 0;
+    for (int i = 0; i < 8; ++i) {
+        bool A = (reg.A >> i) & 1;
+        bool R = (r >> i) & 1;
+
+        bool D = A ^ R ^ B[i];
+        B[i + 1] = (!A & R) | (B[i] & !(A ^ R));
+
+        diff |= (D << i);
+    }
+
+    reg.flags(diff == 0, 1, B[4], B[8]);
+}
+
 uint8_t CPU::read_reg(uint8_t r) {
     switch (r) {
         case 0: return reg.B;
@@ -429,6 +449,158 @@ void CPU::step() {
             
         // ============== AND INSTRUCTIONS ==============
 
-        
+        case 0xA0: // AND B
+            AND(reg.B);
+            break;
+
+        case 0xA1: // AND C
+            AND(reg.C);
+            break;
+
+        case 0xA2: // AND D
+            AND(reg.D);
+            break;
+
+        case 0xA3: // AND E
+            AND(reg.E);
+            break;
+
+        case 0xA4: // AND H
+            AND(reg.H);
+            break;
+
+        case 0xA5: // AND L
+            AND(reg.L);
+            break;
+
+        case 0xA6: // AND (HL)
+            AND(ram.read(reg.HL()));
+            break;
+
+        case 0xA7: // AND A
+            AND(reg.A);
+            break;
+
+        case 0xE6: // AND d8
+            AND(ram.read(reg.PC));
+            reg.PC += 1;
+            break;
+
+        // ============== XOR INSTRUCTIONS ==============
+
+        case 0xA8: // XOR B
+            XOR(reg.B);
+            break;
+
+        case 0xA9: // XOR C
+            XOR(reg.C);
+            break;
+
+        case 0xAA: // XOR D
+            XOR(reg.D);
+            break;
+
+        case 0xAB: // XOR E
+            XOR(reg.E);
+            break;
+
+        case 0xAC: // XOR H
+            XOR(reg.H);
+            break;
+
+        case 0xAD: // XOR L
+            XOR(reg.L);
+            break;
+
+        case 0xAE: // XOR (HL)
+            XOR(ram.read(reg.HL()));
+            break;
+
+        case 0xAF: // XOR A
+            XOR(reg.A);
+            break;
+
+        case 0xEE: // XOR d8
+            XOR(ram.read(reg.PC));
+            reg.PC += 1;
+            break;
+
+        // ============== OR INSTRUCTIONS ==============
+
+        case 0xB0: // OR B
+            OR(reg.B);
+            break;
+
+        case 0xB1: // OR C
+            OR(reg.C);
+            break;
+
+        case 0xB2: // OR D
+            OR(reg.D);
+            break;
+
+        case 0xB3: // OR E
+            OR(reg.E);
+            break;
+
+        case 0xB4: // OR H
+            OR(reg.H);
+            break;
+
+        case 0xB5: // OR L
+            OR(reg.L);
+            break;
+
+        case 0xB6: // OR (HL)
+            OR(ram.read(reg.HL()));
+            break;
+
+        case 0xB7: // OR A
+            OR(reg.A);
+            break;
+
+        case 0xF6: // OR d8
+            OR(ram.read(reg.PC));
+            reg.PC += 1;
+            break;
+
+        // ============== CP INSTRUCTIONS ==============
+
+        case 0xB8: // CP B
+            CP(reg.B);
+            break;
+
+        case 0xB9: // CP C
+            CP(reg.C);
+            break;
+
+        case 0xBA: // CP D
+            CP(reg.D);
+            break;
+
+        case 0xBB: // CP E
+            CP(reg.E);
+            break;
+
+        case 0xBC: // CP H
+            CP(reg.H);
+            break;
+
+        case 0xBD: // CP L
+            CP(reg.L);
+            break;
+
+        case 0xBE: // CP (HL)
+            CP(ram.read(reg.HL()));
+            break;
+
+        case 0xBF: // CP A
+            CP(reg.A);
+            break;
+
+        case 0xFE: // CP d8
+            CP(ram.read(reg.PC));
+            reg.PC += 1;
+            break;
     }
 }
