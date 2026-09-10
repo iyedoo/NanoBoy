@@ -1,7 +1,5 @@
 #include "cpu.h"
 
-
-
 void REG::flags(bool z, bool n, bool h, bool c) {
     F = (z << 7) | (n << 6) | (h << 5) | (c << 4);
 }
@@ -67,6 +65,81 @@ void CPU::ADC(uint8_t r) {
     reg.flags(sum == 0, 0, C[4], C[8]);
 }
 
+void CPU::SUB(uint8_t r) {
+    bool B[9];
+
+    uint8_t diff = 0;
+
+    B[0] = 0;
+    for (int i = 0; i < 8; ++i) {
+        bool A = (reg.A >> i) & 1;
+        bool R = (r >> i) & 1;
+
+        bool D = A ^ R ^ B[i];
+        B[i + 1] = (!A & R) | (B[i] & !(A ^ R));
+
+        diff |= (D << i);
+    }
+
+    reg.A = diff;
+    reg.flags(diff == 0, 1, B[4], B[8]);
+}
+
+void CPU::SBC(uint8_t r) {
+    bool B[9];
+
+    uint8_t diff = 0;
+
+    B[0] = reg.F & 0b00010000;
+    for (int i = 0; i < 8; ++i) {
+        bool A = (reg.A >> i) & 1;
+        bool R = (r >> i) & 1;
+
+        bool D = A ^ R ^ B[i];
+        B[i + 1] = (!A & R) | (B[i] & !(A ^ R));
+
+        diff |= (D << i);
+    }
+
+    reg.A = diff;
+    reg.flags(diff == 0, 1, B[4], B[8]);
+}
+
+void CPU::AND(uint8_t r) {
+    uint8_t out = 0;
+    for (int i = 0; i < 8; ++i) {
+        bool A = (reg.A >> i) & 1;
+        bool R = (r >> i) & 1;
+
+        out |= (A & R) << i;
+    }
+    reg.A = out;
+    reg.flags(out == 0, 0, 1, 0);
+}
+
+void CPU::OR(uint8_t r) {
+    uint8_t out = 0;
+    for (int i = 0; i < 8; ++i) {
+        bool A = (reg.A >> i) & 1;
+        bool R = (r >> i) & 1;
+
+        out |= (A | R) << i;
+    }
+    reg.A = out;
+    reg.flags(out == 0, 0, 0, 0);
+}
+
+void CPU::XOR(uint8_t r) {
+    uint8_t out = 0;
+    for (int i = 0; i < 8; ++i) {
+        bool A = (reg.A >> i) & 1;
+        bool R = (r >> i) & 1;
+
+        out |= (A ^ R) << i;
+    }
+    reg.A = out;
+    reg.flags(out == 0, 0, 0, 0);
+}
 uint8_t CPU::read_reg(uint8_t r) {
     switch (r) {
         case 0: return reg.B;
@@ -285,5 +358,77 @@ void CPU::step() {
             ADC(ram.read(reg.PC));
             reg.PC += 1;
             break;
+        
+        // ============== SUB INSTRUCTIONS ==============
+        
+        case 0x90: // SUB B
+            SUB(reg.B);
+            break;
+
+        case 0x91: // SUB C
+            SUB(reg.C);
+            break;
+
+        case 0x92: // SUB D
+            SUB(reg.D);
+            break;
+
+        case 0x93: // SUB E
+            SUB(reg.E);
+            break;
+
+        case 0x94: // SUB H
+            SUB(reg.H);
+            break;
+
+        case 0x95: // SUB L
+            SUB(reg.L);
+            break;
+
+        case 0x96: // SUB (HL)
+            SUB(ram.read(reg.HL()));
+            break;
+
+        case 0x97: // SUB A
+            SUB(reg.A);
+            break;
+
+        // ============== SBC INSTRUCTIONS ==============
+        
+        case 0x98: // SBC A, B
+            SBC(reg.B);
+            break;
+        
+        case 0x99: // SBC A, C
+            SBC(reg.C);
+            break;
+        
+        case 0x9A: // SBC A, D
+            SBC(reg.D);
+            break;
+        
+        case 0x9B: // SBC A, E
+            SBC(reg.E);
+            break;
+        
+        case 0x9C: // SBC A, H
+            SBC(reg.H);
+            break;
+        
+        case 0x9D: // SBC A, L
+            SBC(reg.L);
+            break;
+        
+        case 0x9E: // SBC A, (HL)
+            SBC(ram.read(reg.HL()));
+            break;
+        
+        case 0x9F: // SBC A, A
+            SBC(reg.A);
+            break;
+            
+        // ============== AND INSTRUCTIONS ==============
+
+        
     }
 }

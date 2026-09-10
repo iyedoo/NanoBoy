@@ -28,12 +28,17 @@ public:
 
     CPU(RAM& ram);
 
-    // ALU Operations
+    // ALU
     void ADD(uint8_t r);
     void ADC(uint8_t r);
     void SUB(uint8_t r);
     void SBC(uint8_t r);
+    void AND(uint8_t r);
+    void OR(uint8_t r);
+    void XOR(uint8_t r);
+    void CP(uint8_t r);
 
+    // Make life easier
     uint8_t read_reg(uint8_t r);
     void write_reg(uint8_t r, uint8_t val);
 
