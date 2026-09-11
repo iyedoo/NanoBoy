@@ -45,6 +45,11 @@ public:
 
     void ADD16(uint16_t rr);
 
+    void DAA();
+    void SCF();
+    void CPL();
+    void CCF();
+
     void RLCA();
     void RRCA();
     void RLA();

@@ -220,12 +220,6 @@ uint16_t CPU::INC16(uint16_t r) {
         sum |= (S << i);
     }
 
-    bool Z = reg.F & 0b10000000;
-    bool H = reg.F & 0b00100000;
-    bool C = reg.F & 0b00010000;
-
-    reg.flags(Z, 0, H, C);
-
     return sum;
 }
 
@@ -244,12 +238,6 @@ uint16_t CPU::DEC16(uint16_t r) {
 
         diff |= (D << i);
     }
-
-    bool Z = reg.F & 0b10000000;
-    bool H = reg.F & 0b00100000;
-    bool C = reg.F & 0b00010000;
-
-    reg.flags(Z, 1, H, C);
 
     return diff;
 }
@@ -273,6 +261,33 @@ void CPU::ADD16(uint16_t rr) {
     reg.sHL(sum);
     reg.flags(reg.F & 0x80, 0, c[12], c[16]);   
 }
+
+void CPU::DAA() {
+    uint8_t adj = 0;
+    bool C = reg.F & 0x10;
+
+    if (!(reg.F & 0x40)) {
+        if ((reg.F & 0x20) || (reg.A & 0x0F) > 9) adj |= 0x06;
+        if (C || reg.A > 0x99) adj |= 0x60, C = 1;
+        reg.A += adj;
+    }
+    else {
+        if (reg.F & 0x20) adj |= 0x06;
+        if (C) adj |= 0x60;
+        reg.A -= adj;
+    }
+
+    reg.flags(reg.A == 0, reg.F & 0x40, 0, C);
+}
+
+void CPU::SCF() { reg.F = (reg.F & 0x80) | 0x10; }
+
+void CPU::CPL() {
+    reg.A = ~reg.A;
+    reg.F = (reg.F & 0x90) | 0x60;
+}
+
+void CPU::CCF() { reg.flags((reg.F >> 7) & 1, 0, 0, !((reg.F >> 4) & 1)); }
 
 void CPU::RLCA() {
     bool Cout = (reg.A >> 7) & 1;
@@ -422,24 +437,26 @@ void CPU::execute() {
             reg.SP = ram.read(reg.PC) | (ram.read(reg.PC + 1) << 8);
             reg.PC += 2;
             break;
-        
+            
         case 0x08: // LD (a16), SP
             ram.write(ram.read(reg.PC) | (ram.read(reg.PC + 1) << 8), reg.SP);
             reg.PC += 2;
             break;
-        
-        case 0xF8: // LD HL, SP+r8
-            uint8_t r8 = ram.read(reg.PC);
+            
+        case 0xF8: { // LD HL, SP+r8
+            uint8_t raw = ram.read(reg.PC);
+            int8_t r8 = static_cast<int8_t>(raw);
             reg.PC += 1;
-
-            bool H = (reg.SP & 0xF) + (r8 & 0xF) > 0xF;
-            bool C = (reg.SP & 0xFF) + (r8 & 0xFF) > 0xF;
-
+            
+            bool H = (reg.SP & 0xF) + (raw & 0xF) > 0xF;
+            bool C = (reg.SP & 0xFF) + (raw & 0xFF) > 0xFF;
+            
             reg.F = (H << 5) | (C << 4);
-
-            reg.sHL(reg.SP + r8);
+            reg.sHL(static_cast<uint16_t>(reg.SP + r8));
             break;
-
+        }
+            
+        // A bug here took exactly 1 hour, 37 minutes to fix
         case 0xF9: reg.SP = reg.HL(); break; // LD SP, HL
 
         // ============== ADD INSTRUCTIONS ==============
@@ -454,17 +471,18 @@ void CPU::execute() {
         case 0x87: ADD(reg.A); break;              // ADD A, A
         case 0xC6: ADD(ram.read(reg.PC++)); break; // ADD A, d8
         
-        case 0xE8: // ADD SP, r8
-            uint8_t r8 = ram.read(reg.PC);
+        case 0xE8: { // ADD SP, r8
+            uint8_t raw = ram.read(reg.PC);
+            int8_t r8 = static_cast<int8_t>(raw);
             reg.PC += 1;
 
-            bool H = (reg.SP & 0xF) + (r8 & 0xF) > 0xF;
-            bool C = (reg.SP & 0xFF) + (r8 & 0xFF) > 0xF;
+            bool H = (reg.SP & 0xF) + (raw & 0xF) > 0xF;
+            bool C = (reg.SP & 0xFF) + (raw & 0xFF) > 0xFF;
 
             reg.F = (H << 5) | (C << 4);
-
-            reg.SP = reg.SP + r8;
+            reg.SP = static_cast<uint16_t>(reg.SP + r8);
             break;
+        }
         
         // why am i doing this to myself
         // i could be talking to a girl rn instead of ts
@@ -598,6 +616,30 @@ void CPU::execute() {
         case 0x17: RLA();  break;
         case 0x0F: RRCA(); break;
         case 0x1F: RRA();  break;
+        
+        // ============== CONTROL INSTRUCTIONS ==============
+        
+        case 0x27: DAA(); break;
+        case 0x37: SCF(); break;
+        case 0x2F: CPL(); break;
+        case 0x3F: CCF(); break;
     
+        // ============== JUMP INSTRUCTIONS ==============
+
+        case 0xC3: reg.PC = ram.read(reg.PC) | (ram.read(reg.PC + 1) << 8); break; // JP a16
+        case 0xE9: reg.PC = reg.HL(); break; // JP (HL)
+        
+        case 0xC2: reg.PC = ((reg.F >> 7) & 1) ? reg.PC + 2 : ram.read(reg.PC) | (ram.read(reg.PC + 1) << 8); break; // JP NZ, a16
+        case 0xCA: reg.PC = ((reg.F >> 7) & 1) ? ram.read(reg.PC) | (ram.read(reg.PC + 1) << 8) : reg.PC + 2; break; // JP Z, a16
+        case 0xD2: reg.PC = ((reg.F >> 4) & 1) ? reg.PC + 2 : ram.read(reg.PC) | (ram.read(reg.PC + 1) << 8); break; // JP NC, a16
+        case 0xDA: reg.PC = ((reg.F >> 4) & 1) ? ram.read(reg.PC) | (ram.read(reg.PC + 1) << 8) : reg.PC + 2; break; // JP C, a16
+
+        // I'm sorry to anyone reading this gibberish i just had to comrpess the file a bit...
+
+        case 0x18: reg.PC += static_cast<int8_t>(ram.read(reg.PC)) + 1; break; // JR r8
+        case 0x20: reg.PC += ((reg.F >> 7) & 1) ? 1 : static_cast<int8_t>(ram.read(reg.PC)) + 1; break; // JR NZ, r8
+        case 0x28: reg.PC += ((reg.F >> 7) & 1) ? static_cast<int8_t>(ram.read(reg.PC)) + 1 : 1; break; // JR Z, r8
+        case 0x30: reg.PC += ((reg.F >> 4) & 1) ? 1 : static_cast<int8_t>(ram.read(reg.PC)) + 1; break; // JR NC, r8
+        case 0x38: reg.PC += ((reg.F >> 4) & 1) ? static_cast<int8_t>(ram.read(reg.PC)) + 1 : 1; break; // JR C, r8
     }
 }
