@@ -438,10 +438,15 @@ void CPU::execute() {
             reg.PC += 2;
             break;
             
-        case 0x08: // LD (a16), SP
-            ram.write(ram.read(reg.PC) | (ram.read(reg.PC + 1) << 8), reg.SP);
+        case 0x08: { // LD (a16), SP
+            uint16_t addr = ram.read(reg.PC) | (ram.read(reg.PC + 1) << 8);
+
+            ram.write(addr, reg.SP & 0xFF);
+            ram.write(addr + 1, reg.SP >> 8);
+
             reg.PC += 2;
             break;
+        }
             
         case 0xF8: { // LD HL, SP+r8
             uint8_t raw = ram.read(reg.PC);
