@@ -355,16 +355,11 @@ void CPU::execute() {
 
     switch (opcode) {
 
-        case 0x00: // NOP
-            break;
-        
-        case 0x10: // STOP 0
-            break;
-        
-        case 0x76: // HALT
-            break;
-        
-        
+        case 0x00: break;                        // NOP        
+        case 0x10: reg.PC += 1; STOP = 1; break; // STOP 0x00
+        case 0x76: HALT = 1; break;              // HALT
+        case 0xF3: break;                        // DI
+        case 0xFB: break;                        // EI
 
         // ============== LOAD INSTRUCIONS ==============
 
@@ -646,5 +641,92 @@ void CPU::execute() {
         case 0x28: reg.PC += ((reg.F >> 7) & 1) ? static_cast<int8_t>(ram.read(reg.PC)) + 1 : 1; break; // JR Z, r8
         case 0x30: reg.PC += ((reg.F >> 4) & 1) ? 1 : static_cast<int8_t>(ram.read(reg.PC)) + 1; break; // JR NC, r8
         case 0x38: reg.PC += ((reg.F >> 4) & 1) ? static_cast<int8_t>(ram.read(reg.PC)) + 1 : 1; break; // JR C, r8
+
+        // ============== PUSH/POP INSTRUCTIONS ==============
+        
+        case 0xC5: // PUSH BC
+            ram.write(reg.SP--, reg.B);
+            ram.write(reg.SP--, reg.C);
+            break;
+        
+        case 0xD5: // PUSH DE
+            ram.write(reg.SP--, reg.D);
+            ram.write(reg.SP--, reg.E);
+            break;
+        
+        case 0xE5: // PUSH HL
+            ram.write(reg.SP--, reg.H);
+            ram.write(reg.SP--, reg.L);
+            break;
+        
+        case 0xF5: // PUSH AF
+            ram.write(reg.SP--, reg.A);
+            ram.write(reg.SP--, reg.F);
+            break;
+
+        case 0xC1: // POP BC
+            reg.C = ram.read(reg.SP++);
+            reg.B = ram.read(reg.SP++);
+            break;
+
+        case 0xD1: // POP DE
+            reg.E = ram.read(reg.SP++);
+            reg.D = ram.read(reg.SP++);
+            break;
+
+        case 0xE1: // POP HL
+            reg.L = ram.read(reg.SP++);
+            reg.H = ram.read(reg.SP++);
+            break;
+
+        case 0xF1: // POP AF
+            reg.F = ram.read(reg.SP++) & 0xF0;
+            reg.A = ram.read(reg.SP++);
+            break;
+
+        // ============== CALL/RET INSTRUCTIONS ==============
+
+        case 0xCD: // CALL nn
+            ram.write(reg.SP--, ((reg.PC + 2) >> 8) & 0x00FF);
+            ram.write(reg.SP--, (reg.PC + 2) & 0x00FF);
+            reg.PC = ram.read(reg.PC) | (ram.read(reg.PC + 1) << 8);
+            break;
+        
+        case 0xC4: // CALL NZ, nn
+            if (!(reg.F & 0x80)) {
+                ram.write(reg.SP--, ((reg.PC + 2) >> 8) & 0xFF);
+                ram.write(reg.SP--, (reg.PC + 2) & 0xFF);
+                reg.PC = ram.read(reg.PC) | (ram.read(reg.PC + 1) << 8);
+            }
+            else reg.PC += 2;
+            break;
+
+        case 0xCC: // CALL Z, nn
+            if (reg.F & 0x80) {
+                ram.write(reg.SP--, ((reg.PC + 2) >> 8) & 0xFF);
+                ram.write(reg.SP--, (reg.PC + 2) & 0xFF);
+                reg.PC = ram.read(reg.PC) | (ram.read(reg.PC + 1) << 8);
+            }
+            else reg.PC += 2;
+            break;
+
+        case 0xD4: // CALL NC, nn
+            if (!(reg.F & 0x10)) {
+                ram.write(reg.SP--, ((reg.PC + 2) >> 8) & 0xFF);
+                ram.write(reg.SP--, (reg.PC + 2) & 0xFF);
+                reg.PC = ram.read(reg.PC) | (ram.read(reg.PC + 1) << 8);
+            }
+            else reg.PC += 2;
+            break;
+
+        case 0xDC: // CALL C, nn
+            if (reg.F & 0x10) {
+                ram.write(reg.SP--, ((reg.PC + 2) >> 8) & 0xFF);
+                ram.write(reg.SP--, (reg.PC + 2) & 0xFF);
+                reg.PC = ram.read(reg.PC) | (ram.read(reg.PC + 1) << 8);
+            }
+            else reg.PC += 2;
+            break;
+
     }
 }

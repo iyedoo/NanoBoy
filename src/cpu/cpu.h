@@ -28,6 +28,9 @@ public:
 
     CPU(RAM& ram);
 
+    bool HALT = 0;
+    bool STOP = 0;
+
     // ALU
     void ADD(uint8_t r);
     void ADC(uint8_t r);
