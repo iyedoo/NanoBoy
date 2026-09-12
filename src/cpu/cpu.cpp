@@ -684,7 +684,7 @@ void CPU::execute() {
             reg.A = ram.read(reg.SP++);
             break;
 
-        // ============== CALL/RET INSTRUCTIONS ==============
+        // ============== CALL/RET/RST INSTRUCTIONS ==============
 
         case 0xCD: // CALL nn
             ram.write(reg.SP--, ((reg.PC + 2) >> 8) & 0x00FF);
@@ -727,6 +727,40 @@ void CPU::execute() {
             }
             else reg.PC += 2;
             break;
+        
+        case 0xC9: // RET
+            reg.PC = ram.read(reg.SP++) | (ram.read(reg.SP++) << 8);
+            break;
 
+        case 0xC0: // RET NZ
+            if (!(reg.F & 0x80)) reg.PC = ram.read(reg.SP++) | (ram.read(reg.SP++) << 8);
+            break;
+
+        case 0xC8: // RET Z
+            if (reg.F & 0x80) reg.PC = ram.read(reg.SP++) | (ram.read(reg.SP++) << 8);
+            break;
+
+        case 0xD0: // RET NC
+            if (!(reg.F & 0x10)) reg.PC = ram.read(reg.SP++) | (ram.read(reg.SP++) << 8);
+            break;
+
+        case 0xD8: // RET C
+            if (reg.F & 0x10) reg.PC = ram.read(reg.SP++) | (ram.read(reg.SP++) << 8);
+            break;
+    
+        // RST Family (I wish the family gets destroyed)
+        case 0xC7:
+        case 0xCF:
+        case 0xD7:
+        case 0xDF:
+        case 0xE7:
+        case 0xEF:
+        case 0xF7:
+        case 0xFF:
+            ram.write(--reg.SP, (reg.PC >> 8) & 0xFF);
+            ram.write(--reg.SP, reg.PC & 0xFF);
+            reg.PC = opcode - 0xC7;
+            break;
+            
     }
 }
