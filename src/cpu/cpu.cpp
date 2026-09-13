@@ -761,6 +761,32 @@ void CPU::execute() {
             ram.write(--reg.SP, reg.PC & 0xFF);
             reg.PC = opcode - 0xC7;
             break;
-            
+
+        // ================ CB PREFIX INTSTRUCTIONS ===================
+        // HELL'S COMIIIIIIIIIING WITH ME (go check the song)
+
+        case 0xCB: // here we go boyz
+            uint8_t nxt = ram.read(reg.PC++);
+
+            int b = (nxt >> 3) & 7;
+            int r = read_reg(nxt & 7);
+
+            if (nxt >= 0x00 && nxt < 0x01) {
+
+            }
+            else if (nxt >= 0x30 && nxt < 0x40) { // SWAP r
+                write_reg(r, (r << 4) | (r >> 4));
+                reg.flags(read_reg(r) == 0, 0, 0, 0);
+            }
+            else if (nxt >= 0x40 && nxt < 0x80) { // BIT b, r
+                bool BIT = (r >> ((nxt - 0x40) / 8)) & 1;
+                reg.flags(!BIT, 0, 1, (reg.F >> 4) & 1);
+            }
+            else if (nxt >= 0x80 && nxt < 0xC0) { // RES b, r
+                write_reg(r, r & ~(1 << b));
+            }
+            else { // SET b, r
+                write_reg(r, r | (1 << b));
+            }
     }
 }
