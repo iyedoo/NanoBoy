@@ -290,9 +290,9 @@ void CPU::CPL() {
 void CPU::CCF() { reg.flags((reg.F >> 7) & 1, 0, 0, !((reg.F >> 4) & 1)); }
 
 void CPU::RLCA() {
-    bool Cout = (reg.A >> 7) & 1;
-    reg.A = (reg.A << 1) | Cout;
-    reg.flags(0, 0, 0, Cout);
+    bool C = (reg.A >> 7) & 1;
+    reg.A = (reg.A << 1) | C;
+    reg.flags(0, 0, 0, C);
 }
 
 void CPU::RLA() {
@@ -303,9 +303,9 @@ void CPU::RLA() {
 }
 
 void CPU::RRCA() {
-    bool Cout = reg.A & 1;
-    reg.A = (reg.A >> 1) | (Cout << 7);
-    reg.flags(0, 0, 0, Cout);
+    bool C = reg.A & 1;
+    reg.A = (reg.A >> 1) | (C << 7);
+    reg.flags(0, 0, 0, C);
 }
 
 void CPU::RRA() {
@@ -313,6 +313,51 @@ void CPU::RRA() {
     bool Cout = reg.A & 1;
     reg.A = (reg.A >> 1) | (C << 7);
     reg.flags(0, 0, 0, Cout);
+}
+
+void CPU::RLC(uint8_t& x) {
+    bool C = (x >> 7) & 1;
+    x = (x << 1) | C;
+    reg.flags(x == 0, 0, 0, C);
+}
+
+void CPU::RL(uint8_t& x) {
+    bool C = (reg.F >> 4) & 1;
+    bool Cout = (x >> 7) & 1;
+    x = (x << 1) | C;
+    reg.flags(x == 0, 0, 0, Cout);
+}
+
+void CPU::RRC(uint8_t& x) {
+    bool C = x & 1;
+    x = (x >> 1) | (C << 7);
+    reg.flags(x == 0, 0, 0, C);
+}
+
+void CPU::RR(uint8_t& x) {
+    bool C = (reg.F >> 4) & 1;
+    bool Cout = x & 1;
+    x = (x >> 1) | (C << 7);
+    reg.flags(x == 0, 0, 0, Cout);
+}
+
+void CPU::SLA(uint8_t& x) {
+    bool C = (x >> 7) & 1;
+    x <<= 1;
+    reg.flags(x == 0, 0, 0, C);
+}
+
+void CPU::SRA(uint8_t& x) {
+    bool C = x & 1;
+    uint8_t MSB = x & 0x80;
+    x = (x >> 1) | MSB;
+    reg.flags(x == 0, 0, 0, C);
+}
+
+void CPU::SRL(uint8_t& x) {
+    bool C = x & 1;
+    x >>= 1;
+    reg.flags(x == 0, 0, 0, C);
 }
 
 uint8_t CPU::read_reg(uint8_t r) {
@@ -516,7 +561,8 @@ void CPU::execute() {
         case 0x95: SUB(reg.L); break;              // SUB L
         case 0x96: SUB(ram.read(reg.HL())); break; // SUB (HL)
         case 0x97: SUB(reg.A); break;              // SUB A
-
+        case 0xD6: SUB(ram.read(reg.PC++)); break; // SUB d8
+        
         // ============== SBC INSTRUCTIONS ==============
         
         case 0x98: SBC(reg.B); break;              // SBC A, B
@@ -527,7 +573,8 @@ void CPU::execute() {
         case 0x9D: SBC(reg.L); break;              // SBC A, L
         case 0x9E: SBC(ram.read(reg.HL())); break; // SBC A, (HL)
         case 0x9F: SBC(reg.A); break;              // SBC A, A
-
+        case 0xDE: SBC(ram.read(reg.PC++)); break; // SBC d8
+        
         // ============== AND INSTRUCTIONS ==============
 
         case 0xA0: AND(reg.B); break;              // AND B
@@ -645,23 +692,23 @@ void CPU::execute() {
         // ============== PUSH/POP INSTRUCTIONS ==============
         
         case 0xC5: // PUSH BC
-            ram.write(reg.SP--, reg.B);
-            ram.write(reg.SP--, reg.C);
+            ram.write(--reg.SP, reg.B);
+            ram.write(--reg.SP, reg.C);
             break;
         
         case 0xD5: // PUSH DE
-            ram.write(reg.SP--, reg.D);
-            ram.write(reg.SP--, reg.E);
+            ram.write(--reg.SP, reg.D);
+            ram.write(--reg.SP, reg.E);
             break;
         
         case 0xE5: // PUSH HL
-            ram.write(reg.SP--, reg.H);
-            ram.write(reg.SP--, reg.L);
+            ram.write(--reg.SP, reg.H);
+            ram.write(--reg.SP, reg.L);
             break;
         
         case 0xF5: // PUSH AF
-            ram.write(reg.SP--, reg.A);
-            ram.write(reg.SP--, reg.F);
+            ram.write(--reg.SP, reg.A);
+            ram.write(--reg.SP, reg.F);
             break;
 
         case 0xC1: // POP BC
@@ -687,15 +734,15 @@ void CPU::execute() {
         // ============== CALL/RET/RST INSTRUCTIONS ==============
 
         case 0xCD: // CALL nn
-            ram.write(reg.SP--, ((reg.PC + 2) >> 8) & 0x00FF);
-            ram.write(reg.SP--, (reg.PC + 2) & 0x00FF);
+            ram.write(--reg.SP, ((reg.PC + 2) >> 8) & 0x00FF);
+            ram.write(--reg.SP, (reg.PC + 2) & 0x00FF);
             reg.PC = ram.read(reg.PC) | (ram.read(reg.PC + 1) << 8);
             break;
         
         case 0xC4: // CALL NZ, nn
             if (!(reg.F & 0x80)) {
-                ram.write(reg.SP--, ((reg.PC + 2) >> 8) & 0xFF);
-                ram.write(reg.SP--, (reg.PC + 2) & 0xFF);
+                ram.write(--reg.SP, ((reg.PC + 2) >> 8) & 0xFF);
+                ram.write(--reg.SP, (reg.PC + 2) & 0xFF);
                 reg.PC = ram.read(reg.PC) | (ram.read(reg.PC + 1) << 8);
             }
             else reg.PC += 2;
@@ -703,8 +750,8 @@ void CPU::execute() {
 
         case 0xCC: // CALL Z, nn
             if (reg.F & 0x80) {
-                ram.write(reg.SP--, ((reg.PC + 2) >> 8) & 0xFF);
-                ram.write(reg.SP--, (reg.PC + 2) & 0xFF);
+                ram.write(--reg.SP, ((reg.PC + 2) >> 8) & 0xFF);
+                ram.write(--reg.SP, (reg.PC + 2) & 0xFF);
                 reg.PC = ram.read(reg.PC) | (ram.read(reg.PC + 1) << 8);
             }
             else reg.PC += 2;
@@ -712,8 +759,8 @@ void CPU::execute() {
 
         case 0xD4: // CALL NC, nn
             if (!(reg.F & 0x10)) {
-                ram.write(reg.SP--, ((reg.PC + 2) >> 8) & 0xFF);
-                ram.write(reg.SP--, (reg.PC + 2) & 0xFF);
+                ram.write(--reg.SP, ((reg.PC + 2) >> 8) & 0xFF);
+                ram.write(--reg.SP, (reg.PC + 2) & 0xFF);
                 reg.PC = ram.read(reg.PC) | (ram.read(reg.PC + 1) << 8);
             }
             else reg.PC += 2;
@@ -721,8 +768,8 @@ void CPU::execute() {
 
         case 0xDC: // CALL C, nn
             if (reg.F & 0x10) {
-                ram.write(reg.SP--, ((reg.PC + 2) >> 8) & 0xFF);
-                ram.write(reg.SP--, (reg.PC + 2) & 0xFF);
+                ram.write(--reg.SP, ((reg.PC + 2) >> 8) & 0xFF);
+                ram.write(--reg.SP, (reg.PC + 2) & 0xFF);
                 reg.PC = ram.read(reg.PC) | (ram.read(reg.PC + 1) << 8);
             }
             else reg.PC += 2;
@@ -765,28 +812,58 @@ void CPU::execute() {
         // ================ CB PREFIX INTSTRUCTIONS ===================
         // HELL'S COMIIIIIIIIIING WITH ME (go check the song)
 
-        case 0xCB: // here we go boyz
+        case 0xCB: {
             uint8_t nxt = ram.read(reg.PC++);
 
-            int b = (nxt >> 3) & 7;
-            int r = read_reg(nxt & 7);
+            uint8_t b = (nxt >> 3) & 7;
+            uint8_t r = nxt & 7;
+            uint8_t x = read_reg(r);
 
-            if (nxt >= 0x00 && nxt < 0x01) {
-
+            if (nxt < 0x08) {      // RLC r
+                RLC(x);
+                write_reg(r, x);
             }
-            else if (nxt >= 0x30 && nxt < 0x40) { // SWAP r
-                write_reg(r, (r << 4) | (r >> 4));
-                reg.flags(read_reg(r) == 0, 0, 0, 0);
+            else if (nxt < 0x10) { // RRC r
+                RRC(x);
+                write_reg(r, x);
             }
-            else if (nxt >= 0x40 && nxt < 0x80) { // BIT b, r
-                bool BIT = (r >> ((nxt - 0x40) / 8)) & 1;
+            else if (nxt < 0x18) { // RL r
+                RL(x);
+                write_reg(r, x);
+            }
+            else if (nxt < 0x20) { // RR r
+                RR(x);
+                write_reg(r, x);
+            }
+            else if (nxt < 0x28) { // SLA r
+                SLA(x);
+                write_reg(r, x);
+            }
+            else if (nxt < 0x30) { // SRA r
+                SRA(x);
+                write_reg(r, x);
+            }
+            else if (nxt < 0x38) { // SWAP r
+                x = (x << 4) | (x >> 4);
+                write_reg(r, x);
+                reg.flags(x == 0, 0, 0, 0);
+            }
+            else if (nxt < 0x40) { // SRL r
+                SRL(x);
+                write_reg(r, x);
+            }
+            else if (nxt < 0x80) { // BIT b, r
+                bool BIT = (x >> b) & 1;
                 reg.flags(!BIT, 0, 1, (reg.F >> 4) & 1);
             }
-            else if (nxt >= 0x80 && nxt < 0xC0) { // RES b, r
-                write_reg(r, r & ~(1 << b));
+            else if (nxt < 0xC0) { // RES b, r
+                write_reg(r, x & ~(1 << b));
             }
-            else { // SET b, r
-                write_reg(r, r | (1 << b));
+            else {                 // SET b, r
+                write_reg(r, x | (1 << b));
             }
+
+            break;
+        }
     }
 }

@@ -55,8 +55,17 @@ public:
 
     void RLCA();
     void RRCA();
-    void RLA();
     void RRA();
+    void RLA();
+
+    void RLC(uint8_t& r);
+    void RRC(uint8_t& r);
+    void RL(uint8_t& r);
+    void RR(uint8_t& r);
+
+    void SLA(uint8_t& r);
+    void SRA(uint8_t& r);
+    void SRL(uint8_t& r);
 
     // Make life easier
     uint8_t read_reg(uint8_t r);
