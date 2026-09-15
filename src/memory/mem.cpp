@@ -25,5 +25,30 @@
 
 #include "mem.h"
 
-uint8_t RAM::read(uint16_t address) { return mem[address]; }
-void RAM::write(uint16_t address, uint8_t val) { mem[address] = val; }
+RAM::RAM() {}
+
+uint8_t RAM::read(uint16_t addr) {
+    if (addr < 0x8000) return rom[addr];
+    if (addr < 0xA000) return vram[addr - 0x8000];
+    if (addr < 0xC000) return eram[addr - 0xA000];
+    if (addr < 0xE000) return wram[addr - 0xC000];
+    if (addr < 0xFE00) return wram[addr - 0xE000];
+    if (addr < 0xFEA0) return oam[addr - 0xFE00];
+    if (addr < 0xFF00) return 0xFF;
+    if (addr < 0xFF80) return io[addr - 0xFF00];
+    if (addr < 0xFFFF) return hram[addr - 0xFF80];
+    return ie;
+}
+
+void RAM::write(uint16_t addr, uint8_t val) {
+    if (addr < 0x8000) rom[addr] = val;
+    if (addr < 0xA000) vram[addr - 0x8000] = val;
+    if (addr < 0xC000) eram[addr - 0xA000] = val;
+    if (addr < 0xE000) wram[addr - 0xC000] = val;
+    if (addr < 0xFE00) wram[addr - 0xE000] = val;
+    if (addr < 0xFEA0) oam[addr - 0xFE00] = val;
+    if (addr < 0xFF00) return;
+    if (addr < 0xFF80) io[addr - 0xFF00] = val;
+    if (addr < 0xFFFF) hram[addr - 0xFF80] = val;
+    ie = val;
+}

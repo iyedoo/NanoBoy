@@ -23,6 +23,10 @@ void CPU::init() {
     reg.H = 0b00000000, reg.L = 0b00000000;
 
     reg.PC = 0b0000000000000000, reg.SP = 0b0000000000000000;
+
+    HALT = 0, STOP = 0, IME = 0;
+
+    IE = 0x00, IF = 0x00;
 }
 
 void CPU::ADD(uint8_t r) {
@@ -387,13 +391,19 @@ void CPU::write_reg(uint8_t r, uint8_t val) {
     }
 }
 
+void CPU::interrupts() {
+
+}
+
 void CPU::execute() {
+
+    interrupts();
+
     uint8_t opcode = ram.read(reg.PC);
     reg.PC += 1;
 
     // LD REG1, REG2/(HL)
-    if (opcode >= 0x40 && opcode <= 0x7F) {
-        if (opcode == 0x76) return;
+    if (opcode >= 0x40 && opcode <= 0x7F && opcode != 0x76) {
         write_reg((opcode >> 3) & 7, read_reg(opcode & 7));
         return;
     }
@@ -403,8 +413,8 @@ void CPU::execute() {
         case 0x00: break;                        // NOP        
         case 0x10: reg.PC += 1; STOP = 1; break; // STOP 0x00
         case 0x76: HALT = 1; break;              // HALT
-        case 0xF3: break;                        // DI
-        case 0xFB: break;                        // EI
+        case 0xF3: IME = 0; break;               // DI
+        case 0xFB: enable = 1; break;               // EI
 
         // ============== LOAD INSTRUCIONS ==============
 
@@ -865,5 +875,8 @@ void CPU::execute() {
 
             break;
         }
+
+        default:
+            break;
     }
 }
