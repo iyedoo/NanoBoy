@@ -25,8 +25,6 @@ void CPU::init() {
     reg.PC = 0b0000000000000000, reg.SP = 0b0000000000000000;
 
     HALT = 0, STOP = 0, IME = 0;
-
-    IE = 0x00, IF = 0x00;
 }
 
 void CPU::ADD(uint8_t r) {
@@ -391,13 +389,34 @@ void CPU::write_reg(uint8_t r, uint8_t val) {
     }
 }
 
-void CPU::interrupts() {
+bool CPU::interrupts() {
+    uint8_t IE = ram.read(0xFFFF);
+    uint8_t IF = ram.read(0xFF0F);
+    bool pending = IE & IF & 0x1F;
 
+    if (!pending) return 0;
+    if (HALT) HALT = 0;
+    if (!IME) return 0;
+    IME = 0;
+
+    for (int i = 0; i < 5; ++i) {
+        if ((pending >> i) & 1) {
+            IF &= ~(1 << i);
+            ram.write(0xFF0F, IF);
+            ram.write(--reg.SP, reg.PC >> 8);
+            ram.write(--reg.SP, reg.PC & 0xFF);
+
+            reg.PC = 0x0040 + i * 8;
+            return 1;
+        }
+    }
+    return 0;
 }
 
 void CPU::execute() {
 
-    interrupts();
+    if (interrupts()) return;
+    if (HALT) return;
 
     uint8_t opcode = ram.read(reg.PC);
     reg.PC += 1;
@@ -413,8 +432,9 @@ void CPU::execute() {
         case 0x00: break;                        // NOP        
         case 0x10: reg.PC += 1; STOP = 1; break; // STOP 0x00
         case 0x76: HALT = 1; break;              // HALT
-        case 0xF3: IME = 0; break;               // DI
-        case 0xFB: enable = 1; break;               // EI
+        case 0xF3: IME = 0, enable = 0; break;   // DI
+        case 0xFB: enable = 1; break;            // EI
+        case 0xD9: reg.PC = ram.read(reg.SP++) | (ram.read(reg.SP++) << 8); IME = 1; break;
 
         // ============== LOAD INSTRUCIONS ==============
 
@@ -878,5 +898,7 @@ void CPU::execute() {
 
         default:
             break;
+
     }
+    if (enable) IME = 1, enable = 0;
 }

@@ -9,8 +9,7 @@ public:
     uint8_t wram[0x2000] = {0};
     uint8_t oam[0xA0] = {};
     uint8_t io[0x80] = {};
-    uint8_t hram[0x7F] = {};
-    uint8_t ie = 0;
+    uint8_t hram[0x80] = {};
 
     RAM();
     uint8_t read(uint16_t address);

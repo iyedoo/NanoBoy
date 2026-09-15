@@ -32,8 +32,6 @@ public:
     bool STOP;
     bool IME, enable;
 
-    uint8_t IE, IF;
-
     // ALU
     void ADD(uint8_t r);
     void ADC(uint8_t r);
@@ -75,6 +73,6 @@ public:
     void write_reg(uint8_t r, uint8_t val);
 
     void init();
-    void interrupts();
+    bool interrupts();
     void execute();
 };
