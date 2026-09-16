@@ -30,7 +30,9 @@ public:
 
     bool HALT;
     bool STOP;
-    bool IME, enable;
+    bool IME; uint8_t enable;
+
+    uint64_t clock;
 
     // ALU
     void ADD(uint8_t r);

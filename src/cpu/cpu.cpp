@@ -1,4 +1,6 @@
 #include "cpu.h"
+#include <iostream>
+#include <iomanip>
 
 void REG::flags(bool z, bool n, bool h, bool c) {
     F = (z << 7) | (n << 6) | (h << 5) | (c << 4);
@@ -24,7 +26,11 @@ void CPU::init() {
 
     reg.PC = 0b0000000000000000, reg.SP = 0b0000000000000000;
 
-    HALT = 0, STOP = 0, IME = 0;
+    HALT = 0;
+    STOP = 0;
+    IME = 0, enable = 0;
+
+    clock = 0;
 }
 
 void CPU::ADD(uint8_t r) {
@@ -423,92 +429,107 @@ void CPU::execute() {
 
     // LD REG1, REG2/(HL)
     if (opcode >= 0x40 && opcode <= 0x7F && opcode != 0x76) {
-        write_reg((opcode >> 3) & 7, read_reg(opcode & 7));
+        uint8_t dst = (opcode >> 3) & 7;
+        uint8_t src = opcode & 7;
+
+        clock += (dst == 6 || src == 6) ? 8 : 4;
+        write_reg(dst, read_reg(src));
         return;
     }
 
     switch (opcode) {
 
-        case 0x00: break;                        // NOP        
-        case 0x10: reg.PC += 1; STOP = 1; break; // STOP 0x00
-        case 0x76: HALT = 1; break;              // HALT
-        case 0xF3: IME = 0, enable = 0; break;   // DI
-        case 0xFB: enable = 1; break;            // EI
-        case 0xD9: reg.PC = ram.read(reg.SP++) | (ram.read(reg.SP++) << 8); IME = 1; break;
+        case 0x00: clock += 4; break;                        // NOP        
+        case 0x10: clock += 4; reg.PC += 1; STOP = 1; break; // STOP 0x00
+        case 0x76: clock += 4; HALT = 1; break;              // HALT
+        case 0xF3: clock += 4; IME = 0, enable = 0; break;   // DI
+        case 0xFB: clock += 4; enable = 2; break;            // EI
+        case 0xD9: clock += 16; reg.PC = ram.read(reg.SP++) | (ram.read(reg.SP++) << 8); IME = 1; break;
 
         // ============== LOAD INSTRUCIONS ==============
 
-        case 0x02: ram.write(reg.BC(), reg.A); break; // LD (BC), A
-        case 0x12: ram.write(reg.DE(), reg.A); break; // LD (DE), A
-        case 0x0A: reg.A = ram.read(reg.BC()); break; // LD A, (BC)
-        case 0x1A: reg.A = ram.read(reg.DE()); break; // LD A, (DE)
+        case 0x02: clock += 8; ram.write(reg.BC(), reg.A); break; // LD (BC), A
+        case 0x12: clock += 8; ram.write(reg.DE(), reg.A); break; // LD (DE), A
+        case 0x0A: clock += 8; reg.A = ram.read(reg.BC()); break; // LD A, (BC)
+        case 0x1A: clock += 8; reg.A = ram.read(reg.DE()); break; // LD A, (DE)
 
         case 0x22: // LD (HL+), A
+            clock += 8;
             ram.write(reg.HL(), reg.A);
             reg.sHL(reg.HL() + 1);
             break;
 
         case 0x32: // LD (HL-), A
+            clock += 8;
             ram.write(reg.HL(), reg.A);
             reg.sHL(reg.HL() - 1);
             break;
         
         case 0x2A: // LD A, (HL+)
+            clock += 8;
             reg.A = ram.read(reg.HL());
             reg.sHL(reg.HL() + 1);
             break;
         
         case 0x3A: // LD A, (HL-)
+            clock += 8;
             reg.A = ram.read(reg.HL());
             reg.sHL(reg.HL() - 1);
             break;
         
-        case 0x06: reg.B = ram.read(reg.PC++); break;              // LD B, d8
-        case 0x16: reg.D = ram.read(reg.PC++); break;              // LD D, d8
-        case 0x26: reg.H = ram.read(reg.PC++); break;              // LD H, d8
-        case 0x36: ram.write(reg.HL(), ram.read(reg.PC++)); break; // LD (HL), d8
-        case 0x0E: reg.C = ram.read(reg.PC++); break;              // LD C, d8
-        case 0x1E: reg.E = ram.read(reg.PC++); break;              // LD E, d8
-        case 0x2E: reg.L = ram.read(reg.PC++); break;              // LD L, d8
-        case 0x3E: reg.A = ram.read(reg.PC++); break;              // LD A, d8
+        case 0x06: clock += 8; reg.B = ram.read(reg.PC++); break;              // LD B, d8
+        case 0x16: clock += 8; reg.D = ram.read(reg.PC++); break;              // LD D, d8
+        case 0x26: clock += 8; reg.H = ram.read(reg.PC++); break;              // LD H, d8
+        case 0x36: clock += 12;ram.write(reg.HL(), ram.read(reg.PC++)); break; // LD (HL), d8
+        case 0x0E: clock += 8; reg.C = ram.read(reg.PC++); break;              // LD C, d8
+        case 0x1E: clock += 8; reg.E = ram.read(reg.PC++); break;              // LD E, d8
+        case 0x2E: clock += 8; reg.L = ram.read(reg.PC++); break;              // LD L, d8
+        case 0x3E: clock += 8; reg.A = ram.read(reg.PC++); break;              // LD A, d8
 
-        case 0xE0: ram.write(0xFF00 + ram.read(reg.PC++), reg.A); break; // LDH (a8), A
-        case 0xF0: reg.A = ram.read(0xFF00 + ram.read(reg.PC++)); break; // LDH A, (a8)
+        case 0xE0: clock += 12; ram.write(0xFF00 + ram.read(reg.PC++), reg.A); break; // LDH (a8), A
+        case 0xF0: clock += 12; reg.A = ram.read(0xFF00 + ram.read(reg.PC++)); break; // LDH A, (a8)
 
-        case 0xE2: ram.write(0xFF00 + reg.C, reg.A); break; // LD (C), A
-        case 0xF2: reg.A = ram.read(0xFF00 + reg.C); break; // LD A, (C)
+        case 0xE2: clock += 8; ram.write(0xFF00 + reg.C, reg.A); break; // LD (C), A
+        case 0xF2: clock += 8; reg.A = ram.read(0xFF00 + reg.C); break; // LD A, (C)
         
         case 0xEA: // LD (a16), A
+            clock += 16;
             ram.write(ram.read(reg.PC) | (ram.read(reg.PC + 1) << 8), reg.A);
             reg.PC += 2;
             break;
         
         case 0xFA: // LD A, (a16)
+            clock += 16;
             reg.A = ram.read(ram.read(reg.PC) | (ram.read(reg.PC + 1) << 8));
             reg.PC += 2;
             break;
         
         case 0x01: // LD BC, d16
+            clock += 12;
             reg.sBC(ram.read(reg.PC) | (ram.read(reg.PC + 1) << 8));
             reg.PC += 2;
             break;
         
         case 0x11: // LD DE, d16
+            clock += 12;
             reg.sDE(ram.read(reg.PC) | (ram.read(reg.PC + 1) << 8));
             reg.PC += 2;
             break;
         
         case 0x21: // LD HL, d16
+            clock += 12;
             reg.sHL(ram.read(reg.PC) | (ram.read(reg.PC + 1) << 8));
             reg.PC += 2;
             break;
         
         case 0x31: // LD SP, d16
+            clock += 12;
             reg.SP = ram.read(reg.PC) | (ram.read(reg.PC + 1) << 8);
             reg.PC += 2;
             break;
             
         case 0x08: { // LD (a16), SP
+            clock += 20;
             uint16_t addr = ram.read(reg.PC) | (ram.read(reg.PC + 1) << 8);
 
             ram.write(addr, reg.SP & 0xFF);
@@ -519,6 +540,7 @@ void CPU::execute() {
         }
             
         case 0xF8: { // LD HL, SP+r8
+            clock += 12;
             uint8_t raw = ram.read(reg.PC);
             int8_t r8 = static_cast<int8_t>(raw);
             reg.PC += 1;
@@ -532,21 +554,22 @@ void CPU::execute() {
         }
             
         // A bug here took exactly 1 hour, 37 minutes to fix
-        case 0xF9: reg.SP = reg.HL(); break; // LD SP, HL
+        case 0xF9: clock += 8; reg.SP = reg.HL(); break; // LD SP, HL
 
         // ============== ADD INSTRUCTIONS ==============
 
-        case 0x80: ADD(reg.B); break;              // ADD A, B
-        case 0x81: ADD(reg.C); break;              // ADD A, C
-        case 0x82: ADD(reg.D); break;              // ADD A, D
-        case 0x83: ADD(reg.E); break;              // ADD A, E
-        case 0x84: ADD(reg.H); break;              // ADD A, H
-        case 0x85: ADD(reg.L); break;              // ADD A, L
-        case 0x86: ADD(ram.read(reg.HL())); break; // ADD A, (HL)
-        case 0x87: ADD(reg.A); break;              // ADD A, A
-        case 0xC6: ADD(ram.read(reg.PC++)); break; // ADD A, d8
+        case 0x80: clock += 4; ADD(reg.B); break;              // ADD A, B
+        case 0x81: clock += 4; ADD(reg.C); break;              // ADD A, C
+        case 0x82: clock += 4; ADD(reg.D); break;              // ADD A, D
+        case 0x83: clock += 4; ADD(reg.E); break;              // ADD A, E
+        case 0x84: clock += 4; ADD(reg.H); break;              // ADD A, H
+        case 0x85: clock += 4; ADD(reg.L); break;              // ADD A, L
+        case 0x86: clock += 8; ADD(ram.read(reg.HL())); break; // ADD A, (HL)
+        case 0x87: clock += 4; ADD(reg.A); break;              // ADD A, A
+        case 0xC6: clock += 8; ADD(ram.read(reg.PC++)); break; // ADD A, d8
         
         case 0xE8: { // ADD SP, r8
+            clock += 16;
             uint8_t raw = ram.read(reg.PC);
             int8_t r8 = static_cast<int8_t>(raw);
             reg.PC += 1;
@@ -564,199 +587,206 @@ void CPU::execute() {
         
         // ADD HL, rr
             
-        case 0x09: ADD16(reg.BC()); break;
-        case 0x19: ADD16(reg.DE()); break;
-        case 0x29: ADD16(reg.HL()); break;
-        case 0x39: ADD16(reg.SP); break;
+        case 0x09: clock += 8; ADD16(reg.BC()); break;
+        case 0x19: clock += 8; ADD16(reg.DE()); break;
+        case 0x29: clock += 8; ADD16(reg.HL()); break;
+        case 0x39: clock += 8; ADD16(reg.SP); break;
 
         // ============== ADC INSTRUCTIONS ==============
 
-        case 0x88: ADC(reg.B); break;              // ADC A, B
-        case 0x89: ADC(reg.C); break;              // ADC A, C
-        case 0x8A: ADC(reg.D); break;              // ADC A, D
-        case 0x8B: ADC(reg.E); break;              // ADC A, E
-        case 0x8C: ADC(reg.H); break;              // ADC A, H
-        case 0x8D: ADC(reg.L); break;              // ADC A, L
-        case 0x8E: ADC(ram.read(reg.HL())); break; // ADC A, (HL)
-        case 0x8F: ADC(reg.A); break;              // ADC A, A
-        case 0xCE: ADC(ram.read(reg.PC++)); break; // ADC A, d8
+        case 0x88: clock += 4; ADC(reg.B); break;              // ADC A, B
+        case 0x89: clock += 4; ADC(reg.C); break;              // ADC A, C
+        case 0x8A: clock += 4; ADC(reg.D); break;              // ADC A, D
+        case 0x8B: clock += 4; ADC(reg.E); break;              // ADC A, E
+        case 0x8C: clock += 4; ADC(reg.H); break;              // ADC A, H
+        case 0x8D: clock += 4; ADC(reg.L); break;              // ADC A, L
+        case 0x8E: clock += 8; ADC(ram.read(reg.HL())); break; // ADC A, (HL)
+        case 0x8F: clock += 4; ADC(reg.A); break;              // ADC A, A
+        case 0xCE: clock += 8; ADC(ram.read(reg.PC++)); break; // ADC A, d8
         
         // ============== SUB INSTRUCTIONS ==============
         
-        case 0x90: SUB(reg.B); break;              // SUB B
-        case 0x91: SUB(reg.C); break;              // SUB C
-        case 0x92: SUB(reg.D); break;              // SUB D
-        case 0x93: SUB(reg.E); break;              // SUB E
-        case 0x94: SUB(reg.H); break;              // SUB H
-        case 0x95: SUB(reg.L); break;              // SUB L
-        case 0x96: SUB(ram.read(reg.HL())); break; // SUB (HL)
-        case 0x97: SUB(reg.A); break;              // SUB A
-        case 0xD6: SUB(ram.read(reg.PC++)); break; // SUB d8
+        case 0x90: clock += 4; SUB(reg.B); break;              // SUB B
+        case 0x91: clock += 4; SUB(reg.C); break;              // SUB C
+        case 0x92: clock += 4; SUB(reg.D); break;              // SUB D
+        case 0x93: clock += 4; SUB(reg.E); break;              // SUB E
+        case 0x94: clock += 4; SUB(reg.H); break;              // SUB H
+        case 0x95: clock += 4; SUB(reg.L); break;              // SUB L
+        case 0x96: clock += 8; SUB(ram.read(reg.HL())); break; // SUB (HL)
+        case 0x97: clock += 4; SUB(reg.A); break;              // SUB A
+        case 0xD6: clock += 8; SUB(ram.read(reg.PC++)); break; // SUB d8
         
         // ============== SBC INSTRUCTIONS ==============
         
-        case 0x98: SBC(reg.B); break;              // SBC A, B
-        case 0x99: SBC(reg.C); break;              // SBC A, C
-        case 0x9A: SBC(reg.D); break;              // SBC A, D
-        case 0x9B: SBC(reg.E); break;              // SBC A, E
-        case 0x9C: SBC(reg.H); break;              // SBC A, H
-        case 0x9D: SBC(reg.L); break;              // SBC A, L
-        case 0x9E: SBC(ram.read(reg.HL())); break; // SBC A, (HL)
-        case 0x9F: SBC(reg.A); break;              // SBC A, A
-        case 0xDE: SBC(ram.read(reg.PC++)); break; // SBC d8
+        case 0x98: clock += 4; SBC(reg.B); break;              // SBC A, B
+        case 0x99: clock += 4; SBC(reg.C); break;              // SBC A, C
+        case 0x9A: clock += 4; SBC(reg.D); break;              // SBC A, D
+        case 0x9B: clock += 4; SBC(reg.E); break;              // SBC A, E
+        case 0x9C: clock += 4; SBC(reg.H); break;              // SBC A, H
+        case 0x9D: clock += 4; SBC(reg.L); break;              // SBC A, L
+        case 0x9E: clock += 8; SBC(ram.read(reg.HL())); break; // SBC A, (HL)
+        case 0x9F: clock += 4; SBC(reg.A); break;              // SBC A, A
+        case 0xDE: clock += 8; SBC(ram.read(reg.PC++)); break; // SBC d8
         
         // ============== AND INSTRUCTIONS ==============
 
-        case 0xA0: AND(reg.B); break;              // AND B
-        case 0xA1: AND(reg.C); break;              // AND C
-        case 0xA2: AND(reg.D); break;              // AND D
-        case 0xA3: AND(reg.E); break;              // AND E
-        case 0xA4: AND(reg.H); break;              // AND H
-        case 0xA5: AND(reg.L); break;              // AND L
-        case 0xA6: AND(ram.read(reg.HL())); break; // AND (HL)
-        case 0xA7: AND(reg.A); break;              // AND A
-        case 0xE6: AND(ram.read(reg.PC++)); break; // AND d8
+        case 0xA0: clock += 4; AND(reg.B); break;              // AND B
+        case 0xA1: clock += 4; AND(reg.C); break;              // AND C
+        case 0xA2: clock += 4; AND(reg.D); break;              // AND D
+        case 0xA3: clock += 4; AND(reg.E); break;              // AND E
+        case 0xA4: clock += 4; AND(reg.H); break;              // AND H
+        case 0xA5: clock += 4; AND(reg.L); break;              // AND L
+        case 0xA6: clock += 8; AND(ram.read(reg.HL())); break; // AND (HL)
+        case 0xA7: clock += 4; AND(reg.A); break;              // AND A
+        case 0xE6: clock += 8; AND(ram.read(reg.PC++)); break; // AND d8
 
         // ============== XOR INSTRUCTIONS ==============
 
-        case 0xA8: XOR(reg.B); break;              // XOR B
-        case 0xA9: XOR(reg.C); break;              // XOR C
-        case 0xAA: XOR(reg.D); break;              // XOR D
-        case 0xAB: XOR(reg.E); break;              // XOR E
-        case 0xAC: XOR(reg.H); break;              // XOR H
-        case 0xAD: XOR(reg.L); break;              // XOR L
-        case 0xAE: XOR(ram.read(reg.HL())); break; // XOR (HL)
-        case 0xAF: XOR(reg.A); break;              // XOR A
-        case 0xEE: XOR(ram.read(reg.PC++)); break; // XOR d8
+        case 0xA8: clock += 4; XOR(reg.B); break;              // XOR B
+        case 0xA9: clock += 4; XOR(reg.C); break;              // XOR C
+        case 0xAA: clock += 4; XOR(reg.D); break;              // XOR D
+        case 0xAB: clock += 4; XOR(reg.E); break;              // XOR E
+        case 0xAC: clock += 4; XOR(reg.H); break;              // XOR H
+        case 0xAD: clock += 4; XOR(reg.L); break;              // XOR L
+        case 0xAE: clock += 8; XOR(ram.read(reg.HL())); break; // XOR (HL)
+        case 0xAF: clock += 4; XOR(reg.A); break;              // XOR A
+        case 0xEE: clock += 8; XOR(ram.read(reg.PC++)); break; // XOR d8
             
 
         // ============== OR INSTRUCTIONS ==============
 
-        case 0xB0: OR(reg.B); break;              // OR B
-        case 0xB1: OR(reg.C); break;              // OR C
-        case 0xB2: OR(reg.D); break;              // OR D
-        case 0xB3: OR(reg.E); break;              // OR E
-        case 0xB4: OR(reg.H); break;              // OR H
-        case 0xB5: OR(reg.L); break;              // OR L
-        case 0xB6: OR(ram.read(reg.HL())); break; // OR (HL)
-        case 0xB7: OR(reg.A); break;              // OR A
-        case 0xF6: OR(ram.read(reg.PC++)); break; // OR d8
+        case 0xB0: clock += 4; OR(reg.B); break;              // OR B
+        case 0xB1: clock += 4; OR(reg.C); break;              // OR C
+        case 0xB2: clock += 4; OR(reg.D); break;              // OR D
+        case 0xB3: clock += 4; OR(reg.E); break;              // OR E
+        case 0xB4: clock += 4; OR(reg.H); break;              // OR H
+        case 0xB5: clock += 4; OR(reg.L); break;              // OR L
+        case 0xB6: clock += 8; OR(ram.read(reg.HL())); break; // OR (HL)
+        case 0xB7: clock += 4; OR(reg.A); break;              // OR A
+        case 0xF6: clock += 8; OR(ram.read(reg.PC++)); break; // OR d8
 
         // ============== CP INSTRUCTIONS ==============
 
-        case 0xB8: CP(reg.B); break;              // CP B
-        case 0xB9: CP(reg.C); break;              // CP C
-        case 0xBA: CP(reg.D); break;              // CP D
-        case 0xBB: CP(reg.E); break;              // CP E
-        case 0xBC: CP(reg.H); break;              // CP H
-        case 0xBD: CP(reg.L); break;              // CP L
-        case 0xBE: CP(ram.read(reg.HL())); break; // CP (HL)
-        case 0xBF: CP(reg.A); break;              // CP A
-        case 0xFE: CP(ram.read(reg.PC++)); break; // CP d8
+        case 0xB8: clock += 4; CP(reg.B); break;              // CP B
+        case 0xB9: clock += 4; CP(reg.C); break;              // CP C
+        case 0xBA: clock += 4; CP(reg.D); break;              // CP D
+        case 0xBB: clock += 4; CP(reg.E); break;              // CP E
+        case 0xBC: clock += 4; CP(reg.H); break;              // CP H
+        case 0xBD: clock += 4; CP(reg.L); break;              // CP L
+        case 0xBE: clock += 8; CP(ram.read(reg.HL())); break; // CP (HL)
+        case 0xBF: clock += 4; CP(reg.A); break;              // CP A
+        case 0xFE: clock += 8; CP(ram.read(reg.PC++)); break; // CP d8
 
         // ============== INC INSTRUCTIONS ==============
-
-        case 0x04: reg.B = INC8(reg.B); break; // INC B
-        case 0x14: reg.D = INC8(reg.D); break; // INC D
-        case 0x24: reg.H = INC8(reg.H); break; // INC H        
-        case 0x0C: reg.C = INC8(reg.C); break; // INC C
-        case 0x1C: reg.E = INC8(reg.E); break; // INC E
-        case 0x2C: reg.L = INC8(reg.L); break; // INC L
-        case 0x3C: reg.A = INC8(reg.A); break; // INC A
         
-        case 0x34: ram.write(reg.HL(), INC8(ram.read(reg.HL()))); break; // INC (HL)
+        case 0x04: clock += 4; reg.B = INC8(reg.B); break;                           // INC B
+        case 0x14: clock += 4; reg.D = INC8(reg.D); break;                           // INC D
+        case 0x24: clock += 4; reg.H = INC8(reg.H); break;                           // INC H        
+        case 0x34: clock += 8; ram.write(reg.HL(), INC8(ram.read(reg.HL()))); break; // INC (HL)
+        case 0x0C: clock += 4; reg.C = INC8(reg.C); break;                           // INC C
+        case 0x1C: clock += 4; reg.E = INC8(reg.E); break;                           // INC E
+        case 0x2C: clock += 4; reg.L = INC8(reg.L); break;                           // INC L
+        case 0x3C: clock += 4; reg.A = INC8(reg.A); break;                           // INC A
         
-        case 0x03: reg.sBC(INC16(reg.BC())); break; // INC BC
-        case 0x13: reg.sDE(INC16(reg.DE())); break; // INC DE
-        case 0x23: reg.sHL(INC16(reg.HL())); break; // INC HL
-        case 0x33: reg.SP = INC16(reg.SP); break;   // INC SP
+        case 0x03: clock += 8; reg.sBC(INC16(reg.BC())); break; // INC BC
+        case 0x13: clock += 8; reg.sDE(INC16(reg.DE())); break; // INC DE
+        case 0x23: clock += 8; reg.sHL(INC16(reg.HL())); break; // INC HL
+        case 0x33: clock += 8; reg.SP = INC16(reg.SP); break;   // INC SP
 
         // ============== DEC INSTRUCTIONS ==============
 
-        case 0x05: reg.B = DEC8(reg.B); break;                           // DEC B
-        case 0x0D: reg.C = DEC8(reg.C); break;                           // DEC C
-        case 0x15: reg.D = DEC8(reg.D); break;                           // DEC D
-        case 0x1D: reg.E = DEC8(reg.E); break;                           // DEC E
-        case 0x25: reg.H = DEC8(reg.H); break;                           // DEC H
-        case 0x2D: reg.L = DEC8(reg.L); break;                           // DEC L
-        case 0x35: ram.write(reg.HL(), DEC8(ram.read(reg.HL()))); break; // DEC (HL)
-        case 0x3D: reg.A = DEC8(reg.A); break;                           // DEC A
+        case 0x05: clock += 4; reg.B = DEC8(reg.B); break;                           // DEC B
+        case 0x15: clock += 4; reg.D = DEC8(reg.D); break;                           // DEC D
+        case 0x25: clock += 4; reg.H = DEC8(reg.H); break;                           // DEC H
+        case 0x35: clock += 8; ram.write(reg.HL(), DEC8(ram.read(reg.HL()))); break; // DEC (HL)
+        case 0x0D: clock += 4; reg.C = DEC8(reg.C); break;                           // DEC C
+        case 0x1D: clock += 4; reg.E = DEC8(reg.E); break;                           // DEC E
+        case 0x2D: clock += 4; reg.L = DEC8(reg.L); break;                           // DEC L
+        case 0x3D: clock += 4; reg.A = DEC8(reg.A); break;                           // DEC A
 
-        case 0x0B: reg.sBC(DEC16(reg.BC())); break; // DEC BC
-        case 0x1B: reg.sDE(DEC16(reg.DE())); break; // DEC DE
-        case 0x2B: reg.sHL(DEC16(reg.HL())); break; // DEC HL
-        case 0x3B: reg.SP = DEC16(reg.SP); break;   // DEC SP
+        case 0x0B: clock += 8; reg.sBC(DEC16(reg.BC())); break; // DEC BC
+        case 0x1B: clock += 8; reg.sDE(DEC16(reg.DE())); break; // DEC DE
+        case 0x2B: clock += 8; reg.sHL(DEC16(reg.HL())); break; // DEC HL
+        case 0x3B: clock += 8; reg.SP = DEC16(reg.SP); break;   // DEC SP
 
         // ============== ROTATE INSTRUCTIONS ==============
         
-        case 0x07: RLCA(); break;
-        case 0x17: RLA();  break;
-        case 0x0F: RRCA(); break;
-        case 0x1F: RRA();  break;
+        case 0x07: clock += 4; RLCA(); break;
+        case 0x17: clock += 4; RLA();  break;
+        case 0x0F: clock += 4; RRCA(); break;
+        case 0x1F: clock += 4; RRA();  break;
         
         // ============== CONTROL INSTRUCTIONS ==============
         
-        case 0x27: DAA(); break;
-        case 0x37: SCF(); break;
-        case 0x2F: CPL(); break;
-        case 0x3F: CCF(); break;
+        case 0x27: clock += 4; DAA(); break;
+        case 0x37: clock += 4; SCF(); break;
+        case 0x2F: clock += 4; CPL(); break;
+        case 0x3F: clock += 4; CCF(); break;
     
         // ============== JUMP INSTRUCTIONS ==============
 
-        case 0xC3: reg.PC = ram.read(reg.PC) | (ram.read(reg.PC + 1) << 8); break; // JP a16
-        case 0xE9: reg.PC = reg.HL(); break; // JP (HL)
+        case 0xC3: clock += 16; reg.PC = ram.read(reg.PC) | (ram.read(reg.PC + 1) << 8); break; // JP a16
+        case 0xE9: clock += 4; reg.PC = reg.HL(); break; // JP (HL)
         
-        case 0xC2: reg.PC = ((reg.F >> 7) & 1) ? reg.PC + 2 : ram.read(reg.PC) | (ram.read(reg.PC + 1) << 8); break; // JP NZ, a16
-        case 0xCA: reg.PC = ((reg.F >> 7) & 1) ? ram.read(reg.PC) | (ram.read(reg.PC + 1) << 8) : reg.PC + 2; break; // JP Z, a16
-        case 0xD2: reg.PC = ((reg.F >> 4) & 1) ? reg.PC + 2 : ram.read(reg.PC) | (ram.read(reg.PC + 1) << 8); break; // JP NC, a16
-        case 0xDA: reg.PC = ((reg.F >> 4) & 1) ? ram.read(reg.PC) | (ram.read(reg.PC + 1) << 8) : reg.PC + 2; break; // JP C, a16
+        case 0xC2: reg.PC = ((reg.F >> 7) & 1) ? reg.PC + 2 : ram.read(reg.PC) | (ram.read(reg.PC + 1) << 8); clock += ((reg.F >> 7) & 1) ? 12 : 16; break; // JP NZ, a16
+        case 0xCA: reg.PC = ((reg.F >> 7) & 1) ? ram.read(reg.PC) | (ram.read(reg.PC + 1) << 8) : reg.PC + 2; clock += ((reg.F >> 7) & 1) ? 16 : 12; break; // JP Z, a16
+        case 0xD2: reg.PC = ((reg.F >> 4) & 1) ? reg.PC + 2 : ram.read(reg.PC) | (ram.read(reg.PC + 1) << 8); clock += ((reg.F >> 4) & 1) ? 12 : 16; break; // JP NC, a16
+        case 0xDA: reg.PC = ((reg.F >> 4) & 1) ? ram.read(reg.PC) | (ram.read(reg.PC + 1) << 8) : reg.PC + 2; clock += ((reg.F >> 4) & 1) ? 16 : 12; break; // JP C, a16
 
         // I'm sorry to anyone reading this gibberish i just had to comrpess the file a bit...
-
-        case 0x18: reg.PC += static_cast<int8_t>(ram.read(reg.PC)) + 1; break; // JR r8
-        case 0x20: reg.PC += ((reg.F >> 7) & 1) ? 1 : static_cast<int8_t>(ram.read(reg.PC)) + 1; break; // JR NZ, r8
-        case 0x28: reg.PC += ((reg.F >> 7) & 1) ? static_cast<int8_t>(ram.read(reg.PC)) + 1 : 1; break; // JR Z, r8
-        case 0x30: reg.PC += ((reg.F >> 4) & 1) ? 1 : static_cast<int8_t>(ram.read(reg.PC)) + 1; break; // JR NC, r8
-        case 0x38: reg.PC += ((reg.F >> 4) & 1) ? static_cast<int8_t>(ram.read(reg.PC)) + 1 : 1; break; // JR C, r8
+        
+        case 0x18: reg.PC += static_cast<int8_t>(ram.read(reg.PC)) + 1; clock = 12; break; // JR r8
+        case 0x20: reg.PC += ((reg.F >> 7) & 1) ? 1 : static_cast<int8_t>(ram.read(reg.PC)) + 1; clock += ((reg.F >> 7) & 1) ? 8 : 12; break; // JR NZ, r8
+        case 0x28: reg.PC += ((reg.F >> 7) & 1) ? static_cast<int8_t>(ram.read(reg.PC)) + 1 : 1; clock += ((reg.F >> 7) & 1) ? 12 : 8; break; // JR Z, r8
+        case 0x30: reg.PC += ((reg.F >> 4) & 1) ? 1 : static_cast<int8_t>(ram.read(reg.PC)) + 1; clock += ((reg.F >> 4) & 1) ? 8 : 12; break; // JR NC, r8
+        case 0x38: reg.PC += ((reg.F >> 4) & 1) ? static_cast<int8_t>(ram.read(reg.PC)) + 1 : 1; clock += ((reg.F >> 4) & 1) ? 12 : 8; break; // JR C, r8
 
         // ============== PUSH/POP INSTRUCTIONS ==============
         
         case 0xC5: // PUSH BC
+            clock += 12;
             ram.write(--reg.SP, reg.B);
             ram.write(--reg.SP, reg.C);
             break;
         
         case 0xD5: // PUSH DE
+            clock += 12;
             ram.write(--reg.SP, reg.D);
             ram.write(--reg.SP, reg.E);
             break;
         
         case 0xE5: // PUSH HL
+            clock += 12;
             ram.write(--reg.SP, reg.H);
             ram.write(--reg.SP, reg.L);
             break;
         
         case 0xF5: // PUSH AF
+            clock += 12;
             ram.write(--reg.SP, reg.A);
             ram.write(--reg.SP, reg.F);
             break;
 
         case 0xC1: // POP BC
+            clock += 12;
             reg.C = ram.read(reg.SP++);
             reg.B = ram.read(reg.SP++);
             break;
 
         case 0xD1: // POP DE
+            clock += 12;
             reg.E = ram.read(reg.SP++);
             reg.D = ram.read(reg.SP++);
             break;
 
         case 0xE1: // POP HL
+            clock += 12;
             reg.L = ram.read(reg.SP++);
             reg.H = ram.read(reg.SP++);
             break;
 
         case 0xF1: // POP AF
+            clock += 12;
             reg.F = ram.read(reg.SP++) & 0xF0;
             reg.A = ram.read(reg.SP++);
             break;
@@ -767,6 +797,7 @@ void CPU::execute() {
             ram.write(--reg.SP, ((reg.PC + 2) >> 8) & 0x00FF);
             ram.write(--reg.SP, (reg.PC + 2) & 0x00FF);
             reg.PC = ram.read(reg.PC) | (ram.read(reg.PC + 1) << 8);
+            clock += 24;
             break;
         
         case 0xC4: // CALL NZ, nn
@@ -774,8 +805,12 @@ void CPU::execute() {
                 ram.write(--reg.SP, ((reg.PC + 2) >> 8) & 0xFF);
                 ram.write(--reg.SP, (reg.PC + 2) & 0xFF);
                 reg.PC = ram.read(reg.PC) | (ram.read(reg.PC + 1) << 8);
+                clock += 24;
             }
-            else reg.PC += 2;
+            else {
+                reg.PC += 2;
+                clock += 12;
+            }
             break;
 
         case 0xCC: // CALL Z, nn
@@ -783,8 +818,12 @@ void CPU::execute() {
                 ram.write(--reg.SP, ((reg.PC + 2) >> 8) & 0xFF);
                 ram.write(--reg.SP, (reg.PC + 2) & 0xFF);
                 reg.PC = ram.read(reg.PC) | (ram.read(reg.PC + 1) << 8);
+                clock += 24;
             }
-            else reg.PC += 2;
+            else {
+                reg.PC += 2;
+                clock += 12;
+            }
             break;
 
         case 0xD4: // CALL NC, nn
@@ -792,8 +831,12 @@ void CPU::execute() {
                 ram.write(--reg.SP, ((reg.PC + 2) >> 8) & 0xFF);
                 ram.write(--reg.SP, (reg.PC + 2) & 0xFF);
                 reg.PC = ram.read(reg.PC) | (ram.read(reg.PC + 1) << 8);
+                clock += 24;
             }
-            else reg.PC += 2;
+            else {
+                reg.PC += 2;
+                clock += 12;
+            }
             break;
 
         case 0xDC: // CALL C, nn
@@ -801,28 +844,49 @@ void CPU::execute() {
                 ram.write(--reg.SP, ((reg.PC + 2) >> 8) & 0xFF);
                 ram.write(--reg.SP, (reg.PC + 2) & 0xFF);
                 reg.PC = ram.read(reg.PC) | (ram.read(reg.PC + 1) << 8);
+                clock += 24;
             }
-            else reg.PC += 2;
+            else {
+                reg.PC += 2;
+                clock += 12;
+            }
             break;
         
         case 0xC9: // RET
             reg.PC = ram.read(reg.SP++) | (ram.read(reg.SP++) << 8);
+            clock += 16;
             break;
 
         case 0xC0: // RET NZ
-            if (!(reg.F & 0x80)) reg.PC = ram.read(reg.SP++) | (ram.read(reg.SP++) << 8);
+            if (!(reg.F & 0x80)) {
+                reg.PC = ram.read(reg.SP++) | (ram.read(reg.SP++) << 8);
+                clock += 20;
+            }
+            else clock += 8;
             break;
 
         case 0xC8: // RET Z
-            if (reg.F & 0x80) reg.PC = ram.read(reg.SP++) | (ram.read(reg.SP++) << 8);
+            if (reg.F & 0x80) {
+                reg.PC = ram.read(reg.SP++) | (ram.read(reg.SP++) << 8);
+                clock += 20;
+            }
+            else clock += 8;
             break;
 
         case 0xD0: // RET NC
-            if (!(reg.F & 0x10)) reg.PC = ram.read(reg.SP++) | (ram.read(reg.SP++) << 8);
+            if (!(reg.F & 0x10)) {
+                reg.PC = ram.read(reg.SP++) | (ram.read(reg.SP++) << 8);
+                clock += 20;
+            }
+            else clock += 8;
             break;
 
         case 0xD8: // RET C
-            if (reg.F & 0x10) reg.PC = ram.read(reg.SP++) | (ram.read(reg.SP++) << 8);
+            if (reg.F & 0x10) {
+                reg.PC = ram.read(reg.SP++) | (ram.read(reg.SP++) << 8);
+                clock += 20;
+            }
+            else clock += 8;
             break;
     
         // RST Family (I wish the family gets destroyed)
@@ -837,6 +901,7 @@ void CPU::execute() {
             ram.write(--reg.SP, (reg.PC >> 8) & 0xFF);
             ram.write(--reg.SP, reg.PC & 0xFF);
             reg.PC = opcode - 0xC7;
+            clock += 16;
             break;
 
         // ================ CB PREFIX INTSTRUCTIONS ===================
@@ -848,6 +913,8 @@ void CPU::execute() {
             uint8_t b = (nxt >> 3) & 7;
             uint8_t r = nxt & 7;
             uint8_t x = read_reg(r);
+
+            clock += r == 6 ? 16 : 8;
 
             if (nxt < 0x08) {      // RLC r
                 RLC(x);
@@ -885,6 +952,7 @@ void CPU::execute() {
             else if (nxt < 0x80) { // BIT b, r
                 bool BIT = (x >> b) & 1;
                 reg.flags(!BIT, 0, 1, (reg.F >> 4) & 1);
+                clock = r == 6 ? 12 : 8;
             }
             else if (nxt < 0xC0) { // RES b, r
                 write_reg(r, x & ~(1 << b));
@@ -897,8 +965,16 @@ void CPU::execute() {
         }
 
         default:
+            std::cerr << "Unknown opcode: 0x"
+                    << std::hex << std::setw(2) << std::setfill('0') << (int)opcode
+                    << " at PC=0x"
+                    << std::setw(4) << (int)(reg.PC - 1)
+                    << '\n';
             break;
 
     }
-    if (enable) IME = 1, enable = 0;
+    if (enable) {
+        --enable;
+        if (!enable) IME = 1;
+    }
 }

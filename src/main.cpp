@@ -1,61 +1,61 @@
-#include <cstdio>
-#include <cstdlib>
-#include <fstream>
-#include <iostream>
+#include <bits/stdc++.h>
 
 #include "cpu/cpu.h"
 #include "memory/mem.h"
 
+using namespace std;
+
 int main(int argc, char** argv) {
     if (argc < 2) {
-        std::cerr << "Usage: " << argv[0] << " <rom.gb>\n";
+        cerr << "Usage: " << argv[0] << " <rom>\n";
         return 1;
     }
-
-    std::ifstream rom_file(argv[1], std::ios::binary | std::ios::ate);
-    if (!rom_file) {
-        std::cerr << "Failed to open ROM: " << argv[1] << "\n";
-        return 1;
-    }
-
-    std::streamsize size = rom_file.tellg();
-    rom_file.seekg(0, std::ios::beg);
 
     RAM ram;
-
-    if (size > static_cast<std::streamsize>(sizeof(ram.rom))) {
-        std::cerr << "ROM too large for current mapper-less RAM (max "
-                  << sizeof(ram.rom) << " bytes, got " << size << ")\n";
-        return 1;
-    }
-
-    if (!rom_file.read(reinterpret_cast<char*>(ram.rom), size)) {
-        std::cerr << "Failed to read ROM into memory\n";
-        return 1;
-    }
-
     CPU cpu(ram);
+
+    ifstream file(argv[1], ios::binary);
+
+    if (!file) {
+        cerr << "Failed to open " << argv[1] << '\n';
+        return 1;
+    }
+
+    file.read(
+        reinterpret_cast<char*>(ram.rom),
+        sizeof(ram.rom)
+    );
+
+    cout << "ROM loaded: " << file.gcount() << " bytes\n";
+
     cpu.init();
-    cpu.reg.PC = 0x0100; // Standard Game Boy entry point after boot ROM
 
-    // Simple run loop. No timers/PPU/joypad yet, so this just
-    // steps the CPU. Add a cycle-accurate clock later if needed.
-    const uint64_t MAX_STEPS = 100000000ULL;
-    uint64_t steps = 0;
+    cpu.reg.A = 0x01;
+    cpu.reg.F = 0xB0;
+    cpu.reg.B = 0x00;
+    cpu.reg.C = 0x13;
+    cpu.reg.D = 0x00;
+    cpu.reg.E = 0xD8;
+    cpu.reg.H = 0x01;
+    cpu.reg.L = 0x4D;
 
-    while (steps < MAX_STEPS) {
+    cpu.reg.SP = 0xFFFE;
+    cpu.reg.PC = 0x0100;
+
+    ram.write(0xFF0F, 0xE1);
+    ram.write(0xFFFF, 0x00);
+
+    uint64_t instructions = 0;
+
+    while (instructions < 100000000) {
         cpu.execute();
-        ++steps;
-
-        if (cpu.STOP) {
-            std::cout << "CPU stopped after " << steps << " steps.\n";
-            break;
-        }
+        ++instructions;
     }
 
-    if (steps >= MAX_STEPS) {
-        std::cout << "Hit max step count (" << MAX_STEPS << "), stopping.\n";
-    }
+    cerr << "\nStopped after " << instructions << " instructions\n";
+    cerr << "PC = 0x"
+         << hex << setw(4) << setfill('0')
+         << cpu.reg.PC << '\n';
 
     return 0;
 }

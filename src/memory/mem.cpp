@@ -24,6 +24,7 @@
 // --------------------------- 0000 --
 
 #include "mem.h"
+#include <iostream>
 
 RAM::RAM() {}
 
@@ -36,7 +37,8 @@ uint8_t RAM::read(uint16_t addr) {
     if (addr < 0xFEA0) return oam[addr - 0xFE00];
     if (addr < 0xFF00) return 0xFF;
     if (addr < 0xFF80) return io[addr - 0xFF00];
-    else return hram[addr - 0xFF80];
+    if (addr < 0xFFFF) return hram[addr - 0xFF80];
+    return ie;
 }
 
 void RAM::write(uint16_t addr, uint8_t val) {
@@ -47,6 +49,11 @@ void RAM::write(uint16_t addr, uint8_t val) {
     else if (addr < 0xFE00) wram[addr - 0xE000] = val;
     else if (addr < 0xFEA0) oam[addr - 0xFE00] = val;
     else if (addr < 0xFF00) return;
+    else if (addr == 0xFF02) {
+        io[0x02] = val;
+        if (val == 0x81) std::cout << (char)io[0x01] << std::flush;
+    }
     else if (addr < 0xFF80) io[addr - 0xFF00] = val;
-    else hram[addr - 0xFF80] = val;
+    else if (addr < 0xFFFF) hram[addr - 0xFF80] = val;
+    else ie = val;
 }
