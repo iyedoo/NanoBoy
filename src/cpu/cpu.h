@@ -23,7 +23,6 @@ public:
 class CPU {
 public:
     REG reg;
-    
     RAM& ram;
 
     CPU(RAM& ram);
@@ -75,6 +74,7 @@ public:
     void write_reg(uint8_t r, uint8_t val);
 
     void init();
+    void tick(uint8_t cycles);
     bool interrupts();
     void execute();
 };

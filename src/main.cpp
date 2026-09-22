@@ -53,9 +53,7 @@ int main(int argc, char** argv) {
     }
 
     cerr << "\nStopped after " << instructions << " instructions\n";
-    cerr << "PC = 0x"
-         << hex << setw(4) << setfill('0')
-         << cpu.reg.PC << '\n';
+    cerr << "PC = 0x" << hex << setw(4) << setfill('0') << cpu.reg.PC << '\n';
 
     return 0;
 }
