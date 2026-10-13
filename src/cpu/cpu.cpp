@@ -19,17 +19,9 @@ void REG::sHL(uint16_t val) { H = (val >> 8), L = (val & 0x00FF); }
 CPU::CPU(RAM& ram) : ram(ram) {}
 
 void CPU::init() {
-    reg.A = 0x00, reg.F = 0x00;
-    reg.B = 0x00, reg.C = 0x00;
-    reg.D = 0x00, reg.E = 0x00;
-    reg.H = 0x00, reg.L = 0x00;
-
-    reg.PC = 0x0000, reg.SP = 0x0000;
-
-    HALT = 0;
-    STOP = 0;
-    IME = 0, enable = 0;
-
+    reg.sAF(0x01B0); reg.sBC(0x0013); reg.sDE(0x00D8); reg.sHL(0x014D);
+    reg.SP = 0xFFFE; reg.PC = 0x0100;
+    HALT = 0; STOP = 0; IME = 0; enable = 0;
     clock = 0;
 }
 
@@ -400,24 +392,37 @@ void CPU::write_reg(uint8_t r, uint8_t val) {
     }
 }
 
+void CPU::push16(uint16_t v) {
+    ram.write(--reg.SP, v >> 8);
+    ram.write(--reg.SP, v & 0xFF);
+}
+
+uint16_t CPU::pop16() {
+    uint8_t lo = ram.read(reg.SP++);
+    uint8_t hi = ram.read(reg.SP++);
+    return (hi << 8) | lo;
+}
+
+void CPU::log(FILE* f) {
+    fprintf(f, "A:%02X F:%02X B:%02X C:%02X D:%02X E:%02X H:%02X L:%02X SP:%04X PC:%04X PCMEM:%02X,%02X,%02X,%02X\n",
+            reg.A, reg.F, reg.B, reg.C, reg.D, reg.E, reg.H, reg.L, reg.SP, reg.PC,
+            ram.read(reg.PC), ram.read(reg.PC + 1), ram.read(reg.PC + 2), ram.read(reg.PC + 3));
+}
+
 bool CPU::interrupts() {
-    uint8_t IE = ram.read(0xFFFF);
-    uint8_t IF = ram.read(0xFF0F);
-    bool pending = IE & IF & 0x1F;
+    uint8_t pending = ram.read(0xFFFF) & ram.read(0xFF0F) & 0x1F;  // uint8_t, not bool
 
     if (!pending) return 0;
-    if (HALT) HALT = 0;
+    HALT = 0;
     if (!IME) return 0;
     IME = 0;
 
     for (int i = 0; i < 5; ++i) {
         if ((pending >> i) & 1) {
-            IF &= ~(1 << i);
-            ram.write(0xFF0F, IF);
-            ram.write(--reg.SP, reg.PC >> 8);
-            ram.write(--reg.SP, reg.PC & 0xFF);
-
+            ram.write(0xFF0F, ram.read(0xFF0F) & ~(1 << i));
+            push16(reg.PC);
             reg.PC = 0x0040 + i * 8;
+            tick(20);
             return 1;
         }
     }
@@ -426,8 +431,9 @@ bool CPU::interrupts() {
 
 void CPU::execute() {
 
+    if (enable && --enable == 0) IME = 1;
     if (interrupts()) return;
-    if (HALT) return;
+    if (HALT) { tick(4); return; }
 
     uint8_t opcode = ram.read(reg.PC);
     reg.PC += 1;
@@ -449,7 +455,7 @@ void CPU::execute() {
         case 0x76: tick(4); HALT = 1; break;              // HALT
         case 0xF3: tick(4); IME = 0, enable = 0; break;   // DI
         case 0xFB: tick(4); enable = 2; break;            // EI
-        case 0xD9: tick(16); reg.PC = ram.read(reg.SP++) | (ram.read(reg.SP++) << 8); IME = 1; break;
+        case 0xD9: tick(16); reg.PC = pop16(); IME = 1; break;   // RETI
 
         // ============== LOAD INSTRUCIONS ==============
 
@@ -687,7 +693,7 @@ void CPU::execute() {
         case 0x04: tick(4); reg.B = INC8(reg.B); break;                           // INC B
         case 0x14: tick(4); reg.D = INC8(reg.D); break;                           // INC D
         case 0x24: tick(4); reg.H = INC8(reg.H); break;                           // INC H        
-        case 0x34: tick(8); ram.write(reg.HL(), INC8(ram.read(reg.HL()))); break; // INC (HL)
+        case 0x34: tick(12); ram.write(reg.HL(), INC8(ram.read(reg.HL()))); break; // INC (HL)
         case 0x0C: tick(4); reg.C = INC8(reg.C); break;                           // INC C
         case 0x1C: tick(4); reg.E = INC8(reg.E); break;                           // INC E
         case 0x2C: tick(4); reg.L = INC8(reg.L); break;                           // INC L
@@ -703,7 +709,7 @@ void CPU::execute() {
         case 0x05: tick(4); reg.B = DEC8(reg.B); break;                           // DEC B
         case 0x15: tick(4); reg.D = DEC8(reg.D); break;                           // DEC D
         case 0x25: tick(4); reg.H = DEC8(reg.H); break;                           // DEC H
-        case 0x35: tick(8); ram.write(reg.HL(), DEC8(ram.read(reg.HL()))); break; // DEC (HL)
+        case 0x35: tick(12); ram.write(reg.HL(), DEC8(ram.read(reg.HL()))); break; // DEC (HL)
         case 0x0D: tick(4); reg.C = DEC8(reg.C); break;                           // DEC C
         case 0x1D: tick(4); reg.E = DEC8(reg.E); break;                           // DEC E
         case 0x2D: tick(4); reg.L = DEC8(reg.L); break;                           // DEC L
@@ -749,25 +755,25 @@ void CPU::execute() {
         // ============== PUSH/POP INSTRUCTIONS ==============
         
         case 0xC5: // PUSH BC
-            tick(12);
+            tick(16);
             ram.write(--reg.SP, reg.B);
             ram.write(--reg.SP, reg.C);
             break;
         
         case 0xD5: // PUSH DE
-            tick(12);
+            tick(16);
             ram.write(--reg.SP, reg.D);
             ram.write(--reg.SP, reg.E);
             break;
         
         case 0xE5: // PUSH HL
-            tick(12);
+            tick(16);
             ram.write(--reg.SP, reg.H);
             ram.write(--reg.SP, reg.L);
             break;
         
         case 0xF5: // PUSH AF
-            tick(12);
+            tick(16);
             ram.write(--reg.SP, reg.A);
             ram.write(--reg.SP, reg.F);
             break;
@@ -857,14 +863,11 @@ void CPU::execute() {
             }
             break;
         
-        case 0xC9: // RET
-            reg.PC = ram.read(reg.SP++) | (ram.read(reg.SP++) << 8);
-            tick(16);
-            break;
+        case 0xC9: reg.PC = pop16(); tick(16); break;
 
         case 0xC0: // RET NZ
             if (!(reg.F & 0x80)) {
-                reg.PC = ram.read(reg.SP++) | (ram.read(reg.SP++) << 8);
+                reg.PC = pop16();
                 tick(20);
             }
             else tick(8);
@@ -872,7 +875,7 @@ void CPU::execute() {
 
         case 0xC8: // RET Z
             if (reg.F & 0x80) {
-                reg.PC = ram.read(reg.SP++) | (ram.read(reg.SP++) << 8);
+                reg.PC = pop16();
                 tick(20);
             }
             else tick(8);
@@ -880,7 +883,7 @@ void CPU::execute() {
 
         case 0xD0: // RET NC
             if (!(reg.F & 0x10)) {
-                reg.PC = ram.read(reg.SP++) | (ram.read(reg.SP++) << 8);
+                reg.PC = pop16();
                 tick(20);
             }
             else tick(8);
@@ -888,7 +891,7 @@ void CPU::execute() {
 
         case 0xD8: // RET C
             if (reg.F & 0x10) {
-                reg.PC = ram.read(reg.SP++) | (ram.read(reg.SP++) << 8);
+                reg.PC = pop16();
                 tick(20);
             }
             else tick(8);
@@ -984,10 +987,5 @@ void CPU::execute() {
                     << std::setw(4) << (int)(reg.PC - 1)
                     << '\n';
             break;
-
-    }
-    if (enable) {
-        --enable;
-        if (!enable) IME = 1;
     }
 }

@@ -15,42 +15,34 @@ int main(int argc, char** argv) {
     CPU cpu(ram);
 
     ifstream file(argv[1], ios::binary);
+    if (!file) { cerr << "Failed to open " << argv[1] << '\n'; return 1; }
 
-    if (!file) {
-        cerr << "Failed to open " << argv[1] << '\n';
-        return 1;
-    }
-
-    file.read(
-        reinterpret_cast<char*>(ram.rom),
-        sizeof(ram.rom)
-    );
-
-    cout << "ROM loaded: " << file.gcount() << " bytes\n";
+    vector<uint8_t> data((istreambuf_iterator<char>(file)), istreambuf_iterator<char>());
+    if (!ram.load_rom(data)) { cerr << "Invalid ROM\n"; return 1; }
+    cout << "ROM loaded: " << data.size() << " bytes\n";
 
     cpu.init();
-
-    cpu.reg.A = 0x01;
-    cpu.reg.F = 0xB0;
-    cpu.reg.B = 0x00;
-    cpu.reg.C = 0x13;
-    cpu.reg.D = 0x00;
-    cpu.reg.E = 0xD8;
-    cpu.reg.H = 0x01;
-    cpu.reg.L = 0x4D;
-
-    cpu.reg.SP = 0xFFFE;
-    cpu.reg.PC = 0x0100;
-
     ram.write(0xFF0F, 0xE1);
     ram.write(0xFFFF, 0x00);
+
+    FILE* logf = nullptr;
+    if (argc > 2 && string(argv[2]) == "--log") logf = fopen("doctor.log", "w");
 
     uint64_t instructions = 0;
 
     while (instructions < 100000000) {
+        if (logf) cpu.log(logf);
+
+        uint16_t pc = cpu.reg.PC;
         cpu.execute();
         ++instructions;
+
+        // Test ROMs finish in a `jr $` / `jp $` loop
+        if (cpu.reg.PC == pc && !cpu.HALT) break;
     }
+
+    if (logf) fclose(logf);
+    cout << '\n';
 
     cerr << "\nStopped after " << instructions << " instructions\n";
     cerr << "PC = 0x" << hex << setw(4) << setfill('0') << cpu.reg.PC << '\n';

@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <cstdio>
 
 #include "../memory/mem.h"
 
@@ -73,8 +74,13 @@ public:
     uint8_t read_reg(uint8_t r);
     void write_reg(uint8_t r, uint8_t val);
 
+    void push16(uint16_t v);
+    uint16_t pop16();
+    void log(FILE* f);
+
     void init();
     void tick(uint8_t cycles);
     bool interrupts();
     void execute();
+    
 };
